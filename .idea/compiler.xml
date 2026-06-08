@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile default="true" name="Default" enabled="true" />
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="wms-admin" />
+        <module name="wms-framwork" />
+        <module name="wms-common" />
+        <module name="wms-modules" />
+      </profile>
+    </annotationProcessing>
+    <bytecodeTargetLevel>
+      <module name="wms-system (1)" target="1.5" />
+    </bytecodeTargetLevel>
+  </component>
+  <component name="JavacSettings">
+    <option name="ADDITIONAL_OPTIONS_OVERRIDE">
+      <module name="wms-admin" options="-parameters" />
+      <module name="wms-common" options="-parameters" />
+      <module name="wms-framwork" options="-parameters" />
+      <module name="wms-modules" options="-parameters" />
+      <module name="wms-system" options="" />
+    </option>
+  </component>
+</project>
