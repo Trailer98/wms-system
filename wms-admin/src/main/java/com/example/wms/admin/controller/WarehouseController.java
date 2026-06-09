@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.WarehouseService;
 import com.example.wms.admin.view.dto.CreateWarehouseRequest;
@@ -24,11 +25,13 @@ public class WarehouseController {
     }
 
     @PostMapping
+    @SysOperationLog(operationType = "创建仓库", content = "创建仓库")
     public ApiResponse<WarehouseResponse> create(@Valid @RequestBody CreateWarehouseRequest request) {
         return ApiResponse.ok(warehouseService.create(request));
     }
 
     @GetMapping
+    @SysOperationLog(operationType = "查询仓库列表", content = "查询仓库列表")
     public ApiResponse<List<WarehouseResponse>> list() {
         return ApiResponse.ok(warehouseService.list());
     }

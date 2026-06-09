@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.SkuService;
 import com.example.wms.admin.view.dto.CreateSkuRequest;
@@ -24,11 +25,13 @@ public class SkuController {
     }
 
     @PostMapping
+    @SysOperationLog(operationType = "创建SKU", content = "创建SKU")
     public ApiResponse<SkuResponse> create(@Valid @RequestBody CreateSkuRequest request) {
         return ApiResponse.ok(skuService.create(request));
     }
 
     @GetMapping
+    @SysOperationLog(operationType = "查询SKU列表", content = "查询SKU列表")
     public ApiResponse<List<SkuResponse>> list() {
         return ApiResponse.ok(skuService.list());
     }

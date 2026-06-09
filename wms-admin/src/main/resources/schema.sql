@@ -84,3 +84,14 @@ create table if not exists stock_movements (
     occurred_at timestamp not null,
     primary key (id)
 );
+
+create table if not exists sys_operation_log (
+    id bigint not null,
+    operator varchar(64) not null,
+    operation_type varchar(64) not null,
+    biz_no varchar(64),
+    content varchar(255),
+    ip varchar(64),
+    create_time timestamp not null,
+    primary key (id)
+);

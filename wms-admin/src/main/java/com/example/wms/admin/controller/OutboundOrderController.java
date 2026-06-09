@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.OutboundOrderService;
 import com.example.wms.admin.view.dto.CreateOutboundOrderRequest;
@@ -22,11 +23,21 @@ public class OutboundOrderController {
     }
 
     @PostMapping
+    @SysOperationLog(
+            operationType = "创建出库单",
+            content = "创建出库单",
+            bizNo = "#request.orderNo()"
+    )
     public ApiResponse<OutboundOrderResponse> create(@Valid @RequestBody CreateOutboundOrderRequest request) {
         return ApiResponse.ok(outboundOrderService.create(request));
     }
 
     @PostMapping("/{id}/ship")
+    @SysOperationLog(
+            operationType = "出库单发货",
+            content = "出库单发货",
+            bizNo = "#result.data().orderNo()"
+    )
     public ApiResponse<OutboundOrderResponse> ship(@PathVariable Long id) {
         return ApiResponse.ok(outboundOrderService.ship(id));
     }

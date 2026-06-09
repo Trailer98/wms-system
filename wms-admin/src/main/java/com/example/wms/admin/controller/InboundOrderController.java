@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.InboundOrderService;
 import com.example.wms.admin.view.dto.CreateInboundOrderRequest;
@@ -22,11 +23,21 @@ public class InboundOrderController {
     }
 
     @PostMapping
+    @SysOperationLog(
+            operationType = "创建入库单",
+            content = "创建入库单",
+            bizNo = "#request.orderNo()"
+    )
     public ApiResponse<InboundOrderResponse> create(@Valid @RequestBody CreateInboundOrderRequest request) {
         return ApiResponse.ok(inboundOrderService.create(request));
     }
 
     @PostMapping("/{id}/receive")
+    @SysOperationLog(
+            operationType = "入库单收货",
+            content = "入库单收货",
+            bizNo = "#result.data().orderNo()"
+    )
     public ApiResponse<InboundOrderResponse> receive(@PathVariable Long id) {
         return ApiResponse.ok(inboundOrderService.receive(id));
     }

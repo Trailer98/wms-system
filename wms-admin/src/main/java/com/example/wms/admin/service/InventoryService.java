@@ -9,6 +9,7 @@ import com.example.wms.admin.model.entity.StockMovement;
 import com.example.wms.admin.model.entity.Warehouse;
 import com.example.wms.admin.model.mapper.InventoryMapper;
 import com.example.wms.admin.model.mapper.StockMovementMapper;
+import com.example.wms.admin.view.dto.InventoryQuery;
 import com.example.wms.admin.view.dto.InventoryResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -36,10 +37,10 @@ public class InventoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<InventoryResponse> search(Long warehouseId, Long skuId) {
+    public List<InventoryResponse> search(InventoryQuery query) {
         return inventoryMapper.selectList(Wrappers.lambdaQuery(Inventory.class)
-                        .eq(warehouseId != null, Inventory::getWarehouseId, warehouseId)
-                        .eq(skuId != null, Inventory::getSkuId, skuId)
+                        .eq(query.getWarehouseId() != null, Inventory::getWarehouseId, query.getWarehouseId())
+                        .eq(query.getSkuId() != null, Inventory::getSkuId, query.getSkuId())
                         .orderByAsc(Inventory::getWarehouseId, Inventory::getSkuId))
                 .stream()
                 .map(this::assemble)
