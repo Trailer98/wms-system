@@ -1,15 +1,17 @@
 package com.example.wms.admin.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.Sku;
 import com.example.wms.admin.model.mapper.SkuMapper;
 import com.example.wms.admin.view.dto.CreateSkuRequest;
+import com.example.wms.admin.view.dto.SkuQuery;
 import com.example.wms.admin.view.dto.SkuResponse;
+import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
+import org.springframework.util.StringUtils;
 
 @Service
 public class SkuService {
@@ -31,10 +33,17 @@ public class SkuService {
     }
 
     @Transactional(readOnly = true)
-    public List<SkuResponse> list() {
-        return skuMapper.selectList(Wrappers.lambdaQuery(Sku.class).orderByAsc(Sku::getCode)).stream()
-                .map(SkuResponse::from)
-                .toList();
+    public PageResponse<SkuResponse> search(SkuQuery query) {
+        Page<Sku> page = skuMapper.selectPage(
+                new Page<>(query.getPageNum(), query.getPageSize()),
+                Wrappers.lambdaQuery(Sku.class)
+                        .like(StringUtils.hasText(query.getCode()), Sku::getCode, query.getCode())
+                        .like(StringUtils.hasText(query.getName()), Sku::getName, query.getName())
+                        .like(StringUtils.hasText(query.getCategory()), Sku::getCategory, query.getCategory())
+                        .orderByAsc(Sku::getCode)
+        );
+
+        return PageResponse.from(page, SkuResponse::from);
     }
 
     @Transactional(readOnly = true)

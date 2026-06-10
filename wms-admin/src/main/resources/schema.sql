@@ -27,6 +27,7 @@ create table if not exists inventory (
     sku_id bigint not null,
     quantity integer not null,
     reserved_quantity integer not null,
+    enabled tinyint(1) not null,
     created_at timestamp not null,
     updated_at timestamp not null,
     primary key (id),
@@ -40,6 +41,7 @@ create table if not exists inbound_orders (
     warehouse_id bigint not null,
     supplier_name varchar(128),
     received_at timestamp,
+    enabled tinyint(1) not null,
     created_at timestamp not null,
     updated_at timestamp not null,
     primary key (id)
@@ -50,6 +52,7 @@ create table if not exists inbound_order_items (
     order_id bigint not null,
     sku_id bigint not null,
     quantity integer not null,
+    enabled tinyint(1) not null,
     primary key (id)
 );
 
@@ -60,6 +63,7 @@ create table if not exists outbound_orders (
     warehouse_id bigint not null,
     customer_name varchar(128),
     shipped_at timestamp,
+    enabled tinyint(1) not null,
     created_at timestamp not null,
     updated_at timestamp not null,
     primary key (id)
@@ -70,6 +74,7 @@ create table if not exists outbound_order_items (
     order_id bigint not null,
     sku_id bigint not null,
     quantity integer not null,
+    enabled tinyint(1) not null,
     primary key (id)
 );
 
@@ -82,6 +87,7 @@ create table if not exists stock_movements (
     business_no varchar(64) not null,
     remark varchar(255),
     occurred_at timestamp not null,
+    enabled tinyint(1) not null,
     primary key (id)
 );
 

@@ -1,15 +1,17 @@
 package com.example.wms.admin.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.Warehouse;
 import com.example.wms.admin.model.mapper.WarehouseMapper;
 import com.example.wms.admin.view.dto.CreateWarehouseRequest;
+import com.example.wms.admin.view.dto.WarehouseQuery;
 import com.example.wms.admin.view.dto.WarehouseResponse;
+import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
+import org.springframework.util.StringUtils;
 
 @Service
 public class WarehouseService {
@@ -31,10 +33,16 @@ public class WarehouseService {
     }
 
     @Transactional(readOnly = true)
-    public List<WarehouseResponse> list() {
-        return warehouseMapper.selectList(Wrappers.lambdaQuery(Warehouse.class).orderByAsc(Warehouse::getCode)).stream()
-                .map(WarehouseResponse::from)
-                .toList();
+    public PageResponse<WarehouseResponse> search(WarehouseQuery query) {
+        Page<Warehouse> page = warehouseMapper.selectPage(
+                new Page<>(query.getPageNum(), query.getPageSize()),
+                Wrappers.lambdaQuery(Warehouse.class)
+                        .like(StringUtils.hasText(query.getCode()), Warehouse::getCode, query.getCode())
+                        .like(StringUtils.hasText(query.getName()), Warehouse::getName, query.getName())
+                        .orderByAsc(Warehouse::getCode)
+        );
+
+        return PageResponse.from(page, WarehouseResponse::from);
     }
 
     @Transactional(readOnly = true)

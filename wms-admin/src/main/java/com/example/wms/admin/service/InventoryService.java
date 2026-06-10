@@ -1,6 +1,7 @@
 package com.example.wms.admin.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.Inventory;
 import com.example.wms.common.enums.MovementType;
@@ -11,10 +12,9 @@ import com.example.wms.admin.model.mapper.InventoryMapper;
 import com.example.wms.admin.model.mapper.StockMovementMapper;
 import com.example.wms.admin.view.dto.InventoryQuery;
 import com.example.wms.admin.view.dto.InventoryResponse;
+import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.List;
 
 @Service
 public class InventoryService {
@@ -37,15 +37,16 @@ public class InventoryService {
     }
 
     @Transactional(readOnly = true)
-    public List<InventoryResponse> search(InventoryQuery query) {
-        return inventoryMapper.selectList(Wrappers.lambdaQuery(Inventory.class)
+    public PageResponse<InventoryResponse> search(InventoryQuery query) {
+        Page<Inventory> page = inventoryMapper.selectPage(
+                new Page<>(query.getPageNum(), query.getPageSize()),
+                Wrappers.lambdaQuery(Inventory.class)
                         .eq(query.getWarehouseId() != null, Inventory::getWarehouseId, query.getWarehouseId())
                         .eq(query.getSkuId() != null, Inventory::getSkuId, query.getSkuId())
-                        .orderByAsc(Inventory::getWarehouseId, Inventory::getSkuId))
-                .stream()
-                .map(this::assemble)
-                .map(InventoryResponse::from)
-                .toList();
+                        .orderByAsc(Inventory::getWarehouseId, Inventory::getSkuId)
+        );
+
+        return PageResponse.from(page, inventory -> InventoryResponse.from(assemble(inventory)));
     }
 
     @Transactional

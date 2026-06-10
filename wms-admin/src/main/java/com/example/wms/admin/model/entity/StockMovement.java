@@ -1,6 +1,7 @@
 package com.example.wms.admin.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.example.wms.common.enums.MovementType;
 import lombok.AccessLevel;
@@ -22,6 +23,8 @@ public class StockMovement {
     private String businessNo;
     private String remark;
     private Instant occurredAt;
+    @TableLogic(value = "1", delval = "0")
+    private boolean enabled = true;
 
     @TableField(exist = false)
     private Warehouse warehouse;

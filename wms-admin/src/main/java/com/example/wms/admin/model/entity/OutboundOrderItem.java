@@ -1,6 +1,7 @@
 package com.example.wms.admin.model.entity;
 
 import com.baomidou.mybatisplus.annotation.TableField;
+import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -15,6 +16,8 @@ public class OutboundOrderItem {
     private Long orderId;
     private Long skuId;
     private int quantity;
+    @TableLogic(value = "1", delval = "0")
+    private boolean enabled = true;
 
     @TableField(exist = false)
     private Sku sku;

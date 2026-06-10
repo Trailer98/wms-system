@@ -6,8 +6,9 @@ import lombok.Setter;
 
 @Getter
 @Setter
-public class InventoryQuery extends PageRequest {
+public class SkuQuery extends PageRequest {
 
-    private Long warehouseId;
-    private Long skuId;
+    private String code;
+    private String name;
+    private String category;
 }
