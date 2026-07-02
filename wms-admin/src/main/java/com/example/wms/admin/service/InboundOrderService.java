@@ -1,6 +1,7 @@
 package com.example.wms.admin.service;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.InboundOrder;
 import com.example.wms.admin.model.entity.InboundOrderItem;
@@ -10,10 +11,13 @@ import com.example.wms.admin.model.entity.Warehouse;
 import com.example.wms.admin.model.mapper.InboundOrderItemMapper;
 import com.example.wms.admin.model.mapper.InboundOrderMapper;
 import com.example.wms.admin.view.dto.CreateInboundOrderRequest;
+import com.example.wms.admin.view.dto.InboundOrderQuery;
 import com.example.wms.admin.view.dto.InboundOrderResponse;
 import com.example.wms.admin.view.dto.OrderItemRequest;
+import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.StringUtils;
 
 import java.util.List;
 
@@ -80,6 +84,20 @@ public class InboundOrderService {
         order.markReceived();
         inboundOrderMapper.updateById(order);
         return InboundOrderResponse.from(order);
+    }
+
+    @Transactional(readOnly = true)
+    public PageResponse<InboundOrderResponse> search(InboundOrderQuery query) {
+        Page<InboundOrder> page = inboundOrderMapper.selectPage(
+                new Page<>(query.getPageNum(), query.getPageSize()),
+                Wrappers.lambdaQuery(InboundOrder.class)
+                        .like(StringUtils.hasText(query.getOrderNo()), InboundOrder::getOrderNo, query.getOrderNo())
+                        .eq(query.getStatus() != null, InboundOrder::getStatus, query.getStatus())
+                        .eq(query.getWarehouseId() != null, InboundOrder::getWarehouseId, query.getWarehouseId())
+                        .orderByDesc(InboundOrder::getCreatedAt)
+        );
+
+        return PageResponse.from(page, order -> InboundOrderResponse.from(assemble(order)));
     }
 
     private InboundOrder getById(Long id) {

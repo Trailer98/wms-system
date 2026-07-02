@@ -21,7 +21,7 @@
 
     <modules>
         <module>wms-common</module>
-        <module>wms-framwork</module>
+        <module>wms-framework</module>
         <module>wms-modules</module>
         <module>wms-admin</module>
     </modules>
@@ -31,7 +31,16 @@
         <mybatis-plus.version>3.5.16</mybatis-plus.version>
         <knife4j.version>4.5.0</knife4j.version>
         <hutool.version>5.8.44</hutool.version>
+        <spring-ai.version>1.0.0-M5</spring-ai.version>
     </properties>
+
+    <repositories>
+        <repository>
+            <id>spring-milestones</id>
+            <name>Spring Milestones</name>
+            <url>https://repo.spring.io/milestone</url>
+        </repository>
+    </repositories>
 
     <dependencyManagement>
         <dependencies>
@@ -42,7 +51,7 @@
             </dependency>
             <dependency>
                 <groupId>com.example</groupId>
-                <artifactId>wms-framwork</artifactId>
+                <artifactId>wms-framework</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>
@@ -64,6 +73,13 @@
                 <groupId>cn.hutool</groupId>
                 <artifactId>hutool-all</artifactId>
                 <version>${hutool.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.springframework.ai</groupId>
+                <artifactId>spring-ai-bom</artifactId>
+                <version>${spring-ai.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
             </dependency>
         </dependencies>
     </dependencyManagement>

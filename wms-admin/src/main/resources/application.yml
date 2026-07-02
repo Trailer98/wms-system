@@ -11,6 +11,14 @@ spring:
       mode: always
   jackson:
     time-zone: Asia/Shanghai
+  ai:
+    openai:
+      api-key: ${DEEPSEEK_API_KEY}
+      base-url: https://api.deepseek.com
+      chat:
+        options:
+          model: ${DEEPSEEK_MODEL:deepseek-chat}
+          temperature: 0.3
 
 server:
   port: 8081
@@ -40,3 +48,11 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+wms:
+  ai:
+    system-prompt: >
+      你是一个 WMS（仓储管理系统）智能助手。
+      回答时优先使用简洁中文。
+      如果用户没有提供足够的仓库、SKU、库存或订单上下文，先指出缺失信息，再给出建议。
+      不要虚构系统实时数据，除非用户已经在问题中明确提供。

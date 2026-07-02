@@ -7,8 +7,8 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
+        <module name="wms-framework" />
         <module name="wms-admin" />
-        <module name="wms-framwork" />
         <module name="wms-common" />
         <module name="wms-modules" />
       </profile>
@@ -21,7 +21,7 @@
     <option name="ADDITIONAL_OPTIONS_OVERRIDE">
       <module name="wms-admin" options="-parameters" />
       <module name="wms-common" options="-parameters" />
-      <module name="wms-framwork" options="-parameters" />
+      <module name="wms-framework" options="-parameters" />
       <module name="wms-modules" options="-parameters" />
       <module name="wms-system" options="" />
     </option>

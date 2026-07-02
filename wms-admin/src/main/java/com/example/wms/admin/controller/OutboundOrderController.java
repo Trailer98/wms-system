@@ -4,8 +4,11 @@ import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.OutboundOrderService;
 import com.example.wms.admin.view.dto.CreateOutboundOrderRequest;
+import com.example.wms.admin.view.dto.OutboundOrderQuery;
 import com.example.wms.admin.view.dto.OutboundOrderResponse;
+import com.example.wms.common.common.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,5 +43,10 @@ public class OutboundOrderController {
     )
     public ApiResponse<OutboundOrderResponse> ship(@PathVariable Long id) {
         return ApiResponse.ok(outboundOrderService.ship(id));
+    }
+
+    @GetMapping
+    public ApiResponse<PageResponse<OutboundOrderResponse>> search(OutboundOrderQuery query) {
+        return ApiResponse.ok(outboundOrderService.search(query));
     }
 }

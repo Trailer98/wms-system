@@ -4,8 +4,11 @@ import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.InboundOrderService;
 import com.example.wms.admin.view.dto.CreateInboundOrderRequest;
+import com.example.wms.admin.view.dto.InboundOrderQuery;
 import com.example.wms.admin.view.dto.InboundOrderResponse;
+import com.example.wms.common.common.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -40,5 +43,10 @@ public class InboundOrderController {
     )
     public ApiResponse<InboundOrderResponse> receive(@PathVariable Long id) {
         return ApiResponse.ok(inboundOrderService.receive(id));
+    }
+
+    @GetMapping
+    public ApiResponse<PageResponse<InboundOrderResponse>> search(InboundOrderQuery query) {
+        return ApiResponse.ok(inboundOrderService.search(query));
     }
 }

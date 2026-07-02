@@ -11,7 +11,7 @@
         <relativePath>../pom.xml</relativePath>
     </parent>
 
-    <artifactId>wms-framwork</artifactId>
+    <artifactId>wms-framework</artifactId>
     <packaging>jar</packaging>
 
     <name>wms-framwork</name>
