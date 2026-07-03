@@ -20,7 +20,7 @@ public class InboundOrder {
     private String orderNo;
     private InboundOrderStatus status = InboundOrderStatus.CREATED;
     private Long warehouseId;
-    private String supplierName;
+    private Long supplierId;
     private Instant receivedAt;
     @TableLogic(value = "1", delval = "0")
     private boolean enabled = true;
@@ -31,13 +31,19 @@ public class InboundOrder {
     private Warehouse warehouse;
 
     @TableField(exist = false)
+    private Supplier supplier;
+
+    @TableField(exist = false)
     private List<InboundOrderItem> items = new ArrayList<>();
 
-    public InboundOrder(String orderNo, Warehouse warehouse, String supplierName) {
+    public InboundOrder(String orderNo, Warehouse warehouse, Supplier supplier) {
         this.orderNo = orderNo;
         this.warehouse = warehouse;
         this.warehouseId = warehouse.getId();
-        this.supplierName = supplierName;
+        if (supplier != null) {
+            this.supplier = supplier;
+            this.supplierId = supplier.getId();
+        }
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -50,6 +56,10 @@ public class InboundOrder {
     public void attachWarehouse(Warehouse warehouse) {
         this.warehouse = warehouse;
         this.warehouseId = warehouse.getId();
+    }
+
+    public void attachSupplier(Supplier supplier) {
+        this.supplier = supplier;
     }
 
     public void setItems(List<InboundOrderItem> items) {

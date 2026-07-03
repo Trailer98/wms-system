@@ -21,7 +21,7 @@ public class OutboundOrder {
     private String orderNo;
     private OutboundOrderStatus status = OutboundOrderStatus.CREATED;
     private Long warehouseId;
-    private String customerName;
+    private Long customerId;
     private Instant shippedAt;
     @TableLogic(value = "1", delval = "0")
     private boolean enabled = true;
@@ -32,13 +32,19 @@ public class OutboundOrder {
     private Warehouse warehouse;
 
     @TableField(exist = false)
+    private Customer customer;
+
+    @TableField(exist = false)
     private List<OutboundOrderItem> items = new ArrayList<>();
 
-    public OutboundOrder(String orderNo, Warehouse warehouse, String customerName) {
+    public OutboundOrder(String orderNo, Warehouse warehouse, Customer customer) {
         this.orderNo = orderNo;
         this.warehouse = warehouse;
         this.warehouseId = warehouse.getId();
-        this.customerName = customerName;
+        if (customer != null) {
+            this.customer = customer;
+            this.customerId = customer.getId();
+        }
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -51,6 +57,10 @@ public class OutboundOrder {
     public void attachWarehouse(Warehouse warehouse) {
         this.warehouse = warehouse;
         this.warehouseId = warehouse.getId();
+    }
+
+    public void attachCustomer(Customer customer) {
+        this.customer = customer;
     }
 
     public void setItems(List<OutboundOrderItem> items) {

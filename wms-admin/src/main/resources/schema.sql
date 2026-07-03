@@ -21,6 +21,32 @@ create table if not exists skus (
     primary key (id)
 );
 
+create table if not exists customers (
+    id bigint not null,
+    code varchar(64) not null unique,
+    name varchar(128) not null,
+    contact_name varchar(64),
+    contact_phone varchar(32),
+    address varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id)
+);
+
+create table if not exists suppliers (
+    id bigint not null,
+    code varchar(64) not null unique,
+    name varchar(128) not null,
+    contact_name varchar(64),
+    contact_phone varchar(32),
+    address varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id)
+);
+
 create table if not exists inventory (
     id bigint not null,
     warehouse_id bigint not null,
@@ -39,13 +65,16 @@ create table if not exists inbound_orders (
     order_no varchar(64) not null unique,
     status varchar(32) not null,
     warehouse_id bigint not null,
-    supplier_name varchar(128),
+    supplier_id bigint,
     received_at timestamp,
     enabled tinyint(1) not null,
     created_at timestamp not null,
     updated_at timestamp not null,
     primary key (id)
 );
+
+alter table inbound_orders add column if not exists supplier_id bigint;
+alter table inbound_orders drop column if exists supplier_name;
 
 create table if not exists inbound_order_items (
     id bigint not null,
@@ -61,13 +90,16 @@ create table if not exists outbound_orders (
     order_no varchar(64) not null unique,
     status varchar(32) not null,
     warehouse_id bigint not null,
-    customer_name varchar(128),
+    customer_id bigint,
     shipped_at timestamp,
     enabled tinyint(1) not null,
     created_at timestamp not null,
     updated_at timestamp not null,
     primary key (id)
 );
+
+alter table outbound_orders add column if not exists customer_id bigint;
+alter table outbound_orders drop column if exists customer_name;
 
 create table if not exists outbound_order_items (
     id bigint not null,

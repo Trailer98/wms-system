@@ -11,7 +11,7 @@ import java.util.List;
 public record CreateOutboundOrderRequest(
         @NotBlank @Size(max = 64) String orderNo,
         @NotNull Long warehouseId,
-        @Size(max = 128) String customerName,
+        Long customerId,
         @Valid @NotEmpty List<OrderItemRequest> items
 ) {
 }

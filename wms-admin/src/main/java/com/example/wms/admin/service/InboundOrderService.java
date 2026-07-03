@@ -7,6 +7,7 @@ import com.example.wms.admin.model.entity.InboundOrder;
 import com.example.wms.admin.model.entity.InboundOrderItem;
 import com.example.wms.common.enums.InboundOrderStatus;
 import com.example.wms.admin.model.entity.Sku;
+import com.example.wms.admin.model.entity.Supplier;
 import com.example.wms.admin.model.entity.Warehouse;
 import com.example.wms.admin.model.mapper.InboundOrderItemMapper;
 import com.example.wms.admin.model.mapper.InboundOrderMapper;
@@ -29,19 +30,22 @@ public class InboundOrderService {
     private final WarehouseService warehouseService;
     private final SkuService skuService;
     private final InventoryService inventoryService;
+    private final SupplierService supplierService;
 
     public InboundOrderService(
             InboundOrderMapper inboundOrderMapper,
             InboundOrderItemMapper inboundOrderItemMapper,
             WarehouseService warehouseService,
             SkuService skuService,
-            InventoryService inventoryService
+            InventoryService inventoryService,
+            SupplierService supplierService
     ) {
         this.inboundOrderMapper = inboundOrderMapper;
         this.inboundOrderItemMapper = inboundOrderItemMapper;
         this.warehouseService = warehouseService;
         this.skuService = skuService;
         this.inventoryService = inventoryService;
+        this.supplierService = supplierService;
     }
 
     @Transactional
@@ -51,7 +55,8 @@ public class InboundOrderService {
             throw new BusinessException("inbound order number already exists");
         }
         Warehouse warehouse = warehouseService.getById(request.warehouseId());
-        InboundOrder order = new InboundOrder(request.orderNo(), warehouse, request.supplierName());
+        Supplier supplier = request.supplierId() != null ? supplierService.getById(request.supplierId()) : null;
+        InboundOrder order = new InboundOrder(request.orderNo(), warehouse, supplier);
 
         for (OrderItemRequest item : request.items()) {
             Sku sku = skuService.getById(item.skuId());
@@ -110,6 +115,9 @@ public class InboundOrderService {
 
     private InboundOrder assemble(InboundOrder order) {
         order.attachWarehouse(warehouseService.getById(order.getWarehouseId()));
+        if (order.getSupplierId() != null) {
+            order.attachSupplier(supplierService.getById(order.getSupplierId()));
+        }
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(Wrappers.lambdaQuery(InboundOrderItem.class)
                 .eq(InboundOrderItem::getOrderId, order.getId())
                 .orderByAsc(InboundOrderItem::getId));

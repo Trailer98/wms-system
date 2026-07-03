@@ -6,6 +6,7 @@ import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.OutboundOrder;
 import com.example.wms.admin.model.entity.OutboundOrderItem;
 import com.example.wms.common.enums.OutboundOrderStatus;
+import com.example.wms.admin.model.entity.Customer;
 import com.example.wms.admin.model.entity.Sku;
 import com.example.wms.admin.model.entity.Warehouse;
 import com.example.wms.admin.model.mapper.OutboundOrderItemMapper;
@@ -29,19 +30,22 @@ public class OutboundOrderService {
     private final WarehouseService warehouseService;
     private final SkuService skuService;
     private final InventoryService inventoryService;
+    private final CustomerService customerService;
 
     public OutboundOrderService(
             OutboundOrderMapper outboundOrderMapper,
             OutboundOrderItemMapper outboundOrderItemMapper,
             WarehouseService warehouseService,
             SkuService skuService,
-            InventoryService inventoryService
+            InventoryService inventoryService,
+            CustomerService customerService
     ) {
         this.outboundOrderMapper = outboundOrderMapper;
         this.outboundOrderItemMapper = outboundOrderItemMapper;
         this.warehouseService = warehouseService;
         this.skuService = skuService;
         this.inventoryService = inventoryService;
+        this.customerService = customerService;
     }
 
     @Transactional
@@ -51,7 +55,8 @@ public class OutboundOrderService {
             throw new BusinessException("outbound order number already exists");
         }
         Warehouse warehouse = warehouseService.getById(request.warehouseId());
-        OutboundOrder order = new OutboundOrder(request.orderNo(), warehouse, request.customerName());
+        Customer customer = request.customerId() != null ? customerService.getById(request.customerId()) : null;
+        OutboundOrder order = new OutboundOrder(request.orderNo(), warehouse, customer);
 
         for (OrderItemRequest item : request.items()) {
             Sku sku = skuService.getById(item.skuId());
@@ -110,6 +115,9 @@ public class OutboundOrderService {
 
     private OutboundOrder assemble(OutboundOrder order) {
         order.attachWarehouse(warehouseService.getById(order.getWarehouseId()));
+        if (order.getCustomerId() != null) {
+            order.attachCustomer(customerService.getById(order.getCustomerId()));
+        }
         List<OutboundOrderItem> items = outboundOrderItemMapper.selectList(Wrappers.lambdaQuery(OutboundOrderItem.class)
                 .eq(OutboundOrderItem::getOrderId, order.getId())
                 .orderByAsc(OutboundOrderItem::getId));
