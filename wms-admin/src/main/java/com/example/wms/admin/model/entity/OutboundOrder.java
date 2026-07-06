@@ -37,6 +37,9 @@ public class OutboundOrder {
     @TableField(exist = false)
     private List<OutboundOrderItem> items = new ArrayList<>();
 
+    @TableField(exist = false)
+    private List<OutboundStockLock> allocations = new ArrayList<>();
+
     public OutboundOrder(String orderNo, Warehouse warehouse, Customer customer) {
         this.orderNo = orderNo;
         this.warehouse = warehouse;
@@ -63,13 +66,33 @@ public class OutboundOrder {
         this.customer = customer;
     }
 
+    public void updateCustomer(Customer customer) {
+        this.customer = customer;
+        this.customerId = customer != null ? customer.getId() : null;
+        this.updatedAt = Instant.now();
+    }
+
     public void setItems(List<OutboundOrderItem> items) {
         this.items = items;
+    }
+
+    public void setAllocations(List<OutboundStockLock> allocations) {
+        this.allocations = allocations;
+    }
+
+    public void markLocked() {
+        this.status = OutboundOrderStatus.LOCKED;
+        this.updatedAt = Instant.now();
     }
 
     public void markShipped() {
         this.status = OutboundOrderStatus.SHIPPED;
         this.shippedAt = Instant.now();
         this.updatedAt = this.shippedAt;
+    }
+
+    public void markCancelled() {
+        this.status = OutboundOrderStatus.CANCELLED;
+        this.updatedAt = Instant.now();
     }
 }

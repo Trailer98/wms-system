@@ -4,6 +4,8 @@ import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.InventoryService;
 import com.example.wms.admin.view.dto.InventoryQuery;
 import com.example.wms.admin.view.dto.InventoryResponse;
+import com.example.wms.admin.view.dto.StockMovementQuery;
+import com.example.wms.admin.view.dto.StockMovementResponse;
 import com.example.wms.common.common.PageResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -22,5 +24,10 @@ public class InventoryController {
     @GetMapping
     public ApiResponse<PageResponse<InventoryResponse>> search(InventoryQuery query) {
         return ApiResponse.ok(inventoryService.search(query));
+    }
+
+    @GetMapping("/transactions/page")
+    public ApiResponse<PageResponse<StockMovementResponse>> searchTransactions(StockMovementQuery query) {
+        return ApiResponse.ok(inventoryService.searchTransactions(query));
     }
 }

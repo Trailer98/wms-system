@@ -7,7 +7,11 @@ public record OrderItemResponse(
         Long skuId,
         String skuCode,
         String skuName,
-        int quantity
+        int quantity,
+        Long areaId,
+        String areaCode,
+        Long locationId,
+        String locationCode
 ) {
 
     public static OrderItemResponse from(InboundOrderItem item) {
@@ -15,7 +19,11 @@ public record OrderItemResponse(
                 item.getSku().getId(),
                 item.getSku().getCode(),
                 item.getSku().getName(),
-                item.getQuantity()
+                item.getQuantity(),
+                item.getArea().getId(),
+                item.getArea().getAreaCode(),
+                item.getLocation().getId(),
+                item.getLocation().getLocationCode()
         );
     }
 
@@ -24,7 +32,11 @@ public record OrderItemResponse(
                 item.getSku().getId(),
                 item.getSku().getCode(),
                 item.getSku().getName(),
-                item.getQuantity()
+                item.getQuantity(),
+                null,
+                null,
+                null,
+                null
         );
     }
 }

@@ -49,8 +49,8 @@ public class InboundOrder {
         this.updatedAt = now;
     }
 
-    public void addItem(Sku sku, int quantity) {
-        this.items.add(new InboundOrderItem(this, sku, quantity));
+    public void addItem(Sku sku, WarehouseArea area, WarehouseLocation location, int quantity) {
+        this.items.add(new InboundOrderItem(this, sku, area, location, quantity));
     }
 
     public void attachWarehouse(Warehouse warehouse) {
@@ -60,6 +60,12 @@ public class InboundOrder {
 
     public void attachSupplier(Supplier supplier) {
         this.supplier = supplier;
+    }
+
+    public void updateSupplier(Supplier supplier) {
+        this.supplier = supplier;
+        this.supplierId = supplier != null ? supplier.getId() : null;
+        this.updatedAt = Instant.now();
     }
 
     public void setItems(List<InboundOrderItem> items) {

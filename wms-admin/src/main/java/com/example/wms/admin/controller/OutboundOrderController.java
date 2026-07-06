@@ -6,11 +6,14 @@ import com.example.wms.admin.service.OutboundOrderService;
 import com.example.wms.admin.view.dto.CreateOutboundOrderRequest;
 import com.example.wms.admin.view.dto.OutboundOrderQuery;
 import com.example.wms.admin.view.dto.OutboundOrderResponse;
+import com.example.wms.admin.view.dto.UpdateOutboundOrderRequest;
 import com.example.wms.common.common.PageResponse;
 import jakarta.validation.Valid;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -35,6 +38,26 @@ public class OutboundOrderController {
         return ApiResponse.ok(outboundOrderService.create(request));
     }
 
+    @PutMapping("/{id}")
+    @SysOperationLog(
+            operationType = "编辑出库单",
+            content = "编辑出库单",
+            bizNo = "#result.data().orderNo()"
+    )
+    public ApiResponse<OutboundOrderResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateOutboundOrderRequest request) {
+        return ApiResponse.ok(outboundOrderService.update(id, request));
+    }
+
+    @PostMapping("/{id}/lock")
+    @SysOperationLog(
+            operationType = "出库单锁库",
+            content = "出库单锁库",
+            bizNo = "#result.data().orderNo()"
+    )
+    public ApiResponse<OutboundOrderResponse> lock(@PathVariable Long id) {
+        return ApiResponse.ok(outboundOrderService.lock(id));
+    }
+
     @PostMapping("/{id}/ship")
     @SysOperationLog(
             operationType = "出库单发货",
@@ -45,8 +68,33 @@ public class OutboundOrderController {
         return ApiResponse.ok(outboundOrderService.ship(id));
     }
 
+    @PostMapping("/{id}/cancel")
+    @SysOperationLog(
+            operationType = "出库单取消",
+            content = "出库单取消",
+            bizNo = "#result.data().orderNo()"
+    )
+    public ApiResponse<OutboundOrderResponse> cancel(@PathVariable Long id) {
+        return ApiResponse.ok(outboundOrderService.cancel(id));
+    }
+
     @GetMapping
     public ApiResponse<PageResponse<OutboundOrderResponse>> search(OutboundOrderQuery query) {
         return ApiResponse.ok(outboundOrderService.search(query));
+    }
+
+    @GetMapping("/{id}")
+    public ApiResponse<OutboundOrderResponse> getDetail(@PathVariable Long id) {
+        return ApiResponse.ok(outboundOrderService.getDetail(id));
+    }
+
+    @DeleteMapping("/{id}")
+    @SysOperationLog(
+            operationType = "删除出库单",
+            content = "删除出库单"
+    )
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        outboundOrderService.delete(id);
+        return ApiResponse.ok(null);
     }
 }

@@ -12,6 +12,6 @@ public record CreateInboundOrderRequest(
         @NotBlank @Size(max = 64) String orderNo,
         @NotNull Long warehouseId,
         Long supplierId,
-        @Valid @NotEmpty List<OrderItemRequest> items
+        @Valid @NotEmpty List<InboundOrderItemRequest> items
 ) {
 }

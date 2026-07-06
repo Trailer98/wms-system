@@ -4,17 +4,16 @@ import com.baomidou.mybatisplus.annotation.EnumValue;
 import lombok.Getter;
 
 @Getter
-public enum OutboundOrderStatus {
-    CREATED("CREATED", "已创建"),
-    LOCKED("LOCKED", "已锁库"),
-    SHIPPED("SHIPPED", "已发货"),
-    CANCELLED("CANCELLED", "已取消");
+public enum LocationType {
+    NORMAL("NORMAL", "普通库位"),
+    TEMP("TEMP", "临时库位"),
+    VIRTUAL("VIRTUAL", "虚拟库位");
 
     @EnumValue
     private final String code;
     private final String label;
 
-    OutboundOrderStatus(String code, String label) {
+    LocationType(String code, String label) {
         this.code = code;
         this.label = label;
     }

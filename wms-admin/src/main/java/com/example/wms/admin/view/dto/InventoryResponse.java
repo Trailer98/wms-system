@@ -1,6 +1,7 @@
 package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.Inventory;
+import com.example.wms.common.enums.InventoryStatus;
 
 import java.time.Instant;
 
@@ -12,8 +13,16 @@ public record InventoryResponse(
         Long skuId,
         String skuCode,
         String skuName,
+        Long areaId,
+        String areaCode,
+        String areaName,
+        Long locationId,
+        String locationCode,
+        String locationName,
+        InventoryStatus inventoryStatus,
         int quantity,
         int reservedQuantity,
+        int frozenQuantity,
         int availableQuantity,
         Instant updatedAt
 ) {
@@ -27,8 +36,16 @@ public record InventoryResponse(
                 inventory.getSku().getId(),
                 inventory.getSku().getCode(),
                 inventory.getSku().getName(),
+                inventory.getArea() != null ? inventory.getArea().getId() : null,
+                inventory.getArea() != null ? inventory.getArea().getAreaCode() : null,
+                inventory.getArea() != null ? inventory.getArea().getAreaName() : null,
+                inventory.getLocation() != null ? inventory.getLocation().getId() : null,
+                inventory.getLocation() != null ? inventory.getLocation().getLocationCode() : null,
+                inventory.getLocation() != null ? inventory.getLocation().getLocationName() : null,
+                inventory.getInventoryStatus(),
                 inventory.getQuantity(),
                 inventory.getReservedQuantity(),
+                inventory.getFrozenQuantity(),
                 inventory.getAvailableQuantity(),
                 inventory.getUpdatedAt()
         );

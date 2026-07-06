@@ -9,12 +9,15 @@ import com.example.wms.common.enums.InboundOrderStatus;
 import com.example.wms.admin.model.entity.Sku;
 import com.example.wms.admin.model.entity.Supplier;
 import com.example.wms.admin.model.entity.Warehouse;
+import com.example.wms.admin.model.entity.WarehouseArea;
+import com.example.wms.admin.model.entity.WarehouseLocation;
 import com.example.wms.admin.model.mapper.InboundOrderItemMapper;
 import com.example.wms.admin.model.mapper.InboundOrderMapper;
 import com.example.wms.admin.view.dto.CreateInboundOrderRequest;
+import com.example.wms.admin.view.dto.InboundOrderItemRequest;
 import com.example.wms.admin.view.dto.InboundOrderQuery;
 import com.example.wms.admin.view.dto.InboundOrderResponse;
-import com.example.wms.admin.view.dto.OrderItemRequest;
+import com.example.wms.admin.view.dto.UpdateInboundOrderRequest;
 import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -31,6 +34,8 @@ public class InboundOrderService {
     private final SkuService skuService;
     private final InventoryService inventoryService;
     private final SupplierService supplierService;
+    private final WarehouseAreaService warehouseAreaService;
+    private final WarehouseLocationService warehouseLocationService;
 
     public InboundOrderService(
             InboundOrderMapper inboundOrderMapper,
@@ -38,7 +43,9 @@ public class InboundOrderService {
             WarehouseService warehouseService,
             SkuService skuService,
             InventoryService inventoryService,
-            SupplierService supplierService
+            SupplierService supplierService,
+            WarehouseAreaService warehouseAreaService,
+            WarehouseLocationService warehouseLocationService
     ) {
         this.inboundOrderMapper = inboundOrderMapper;
         this.inboundOrderItemMapper = inboundOrderItemMapper;
@@ -46,6 +53,8 @@ public class InboundOrderService {
         this.skuService = skuService;
         this.inventoryService = inventoryService;
         this.supplierService = supplierService;
+        this.warehouseAreaService = warehouseAreaService;
+        this.warehouseLocationService = warehouseLocationService;
     }
 
     @Transactional
@@ -58,10 +67,7 @@ public class InboundOrderService {
         Supplier supplier = request.supplierId() != null ? supplierService.getById(request.supplierId()) : null;
         InboundOrder order = new InboundOrder(request.orderNo(), warehouse, supplier);
 
-        for (OrderItemRequest item : request.items()) {
-            Sku sku = skuService.getById(item.skuId());
-            order.addItem(sku, item.quantity());
-        }
+        addItems(order, warehouse, request.items());
 
         inboundOrderMapper.insert(order);
         order.getItems().forEach(item -> {
@@ -73,6 +79,57 @@ public class InboundOrderService {
     }
 
     @Transactional
+    public InboundOrderResponse update(Long id, UpdateInboundOrderRequest request) {
+        InboundOrder order = getById(id);
+        if (order.getStatus() != InboundOrderStatus.CREATED) {
+            throw new BusinessException("inbound order can only be edited before it is received");
+        }
+
+        Warehouse warehouse = warehouseService.getById(order.getWarehouseId());
+        Supplier supplier = request.supplierId() != null ? supplierService.getById(request.supplierId()) : null;
+        order.updateSupplier(supplier);
+
+        inboundOrderItemMapper.delete(Wrappers.lambdaQuery(InboundOrderItem.class)
+                .eq(InboundOrderItem::getOrderId, id));
+        addItems(order, warehouse, request.items());
+        order.getItems().forEach(inboundOrderItemMapper::insert);
+
+        inboundOrderMapper.updateById(order);
+        return getDetail(id);
+    }
+
+    private void addItems(InboundOrder order, Warehouse warehouse, List<InboundOrderItemRequest> itemRequests) {
+        for (InboundOrderItemRequest item : itemRequests) {
+            Sku sku = skuService.getById(item.skuId());
+            WarehouseArea area = warehouseAreaService.getById(item.areaId());
+            if (!area.getWarehouseId().equals(warehouse.getId())) {
+                throw new BusinessException("area does not belong to the given warehouse");
+            }
+            WarehouseLocation location = warehouseLocationService.getById(item.locationId());
+            if (!location.getAreaId().equals(area.getId())) {
+                throw new BusinessException("location does not belong to the given area");
+            }
+            order.addItem(sku, area, location, item.quantity());
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public InboundOrderResponse getDetail(Long id) {
+        return InboundOrderResponse.from(assemble(getById(id)));
+    }
+
+    @Transactional
+    public void delete(Long id) {
+        InboundOrder order = getById(id);
+        if (order.getStatus() != InboundOrderStatus.CREATED) {
+            throw new BusinessException("only inbound orders that have not been received can be deleted");
+        }
+        inboundOrderItemMapper.delete(Wrappers.lambdaQuery(InboundOrderItem.class)
+                .eq(InboundOrderItem::getOrderId, id));
+        inboundOrderMapper.deleteById(id);
+    }
+
+    @Transactional
     public InboundOrderResponse receive(Long id) {
         InboundOrder order = assemble(getById(id));
         if (order.getStatus() != InboundOrderStatus.CREATED) {
@@ -81,6 +138,8 @@ public class InboundOrderService {
 
         order.getItems().forEach(item -> inventoryService.receive(
                 order.getWarehouse(),
+                item.getArea(),
+                item.getLocation(),
                 item.getSku(),
                 item.getQuantity(),
                 order.getOrderNo(),
@@ -121,7 +180,11 @@ public class InboundOrderService {
         List<InboundOrderItem> items = inboundOrderItemMapper.selectList(Wrappers.lambdaQuery(InboundOrderItem.class)
                 .eq(InboundOrderItem::getOrderId, order.getId())
                 .orderByAsc(InboundOrderItem::getId));
-        items.forEach(item -> item.attachSku(skuService.getById(item.getSkuId())));
+        items.forEach(item -> {
+            item.attachSku(skuService.getById(item.getSkuId()));
+            item.attachArea(warehouseAreaService.getById(item.getAreaId()));
+            item.attachLocation(warehouseLocationService.getById(item.getLocationId()));
+        });
         order.setItems(items);
         return order;
     }

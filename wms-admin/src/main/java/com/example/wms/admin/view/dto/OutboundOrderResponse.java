@@ -16,6 +16,7 @@ public record OutboundOrderResponse(
         String customerCode,
         String customerName,
         List<OrderItemResponse> items,
+        List<AllocationResponse> allocations,
         Instant shippedAt,
         Instant createdAt,
         Instant updatedAt
@@ -32,6 +33,7 @@ public record OutboundOrderResponse(
                 order.getCustomer() != null ? order.getCustomer().getCode() : null,
                 order.getCustomer() != null ? order.getCustomer().getName() : null,
                 order.getItems().stream().map(OrderItemResponse::from).toList(),
+                order.getAllocations().stream().map(AllocationResponse::from).toList(),
                 order.getShippedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()
