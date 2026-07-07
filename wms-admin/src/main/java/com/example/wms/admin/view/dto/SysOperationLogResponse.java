@@ -6,10 +6,16 @@ import java.time.LocalDateTime;
 
 public record SysOperationLogResponse(
         Long id,
+        Long userId,
         String operator,
         String operationType,
+        String module,
         String bizNo,
         String content,
+        String requestUri,
+        String requestMethod,
+        boolean success,
+        String errorMessage,
         String ip,
         LocalDateTime createTime
 ) {
@@ -17,10 +23,16 @@ public record SysOperationLogResponse(
     public static SysOperationLogResponse from(SysOperationLog log) {
         return new SysOperationLogResponse(
                 log.getId(),
+                log.getUserId(),
                 log.getOperator(),
                 log.getOperationType(),
+                log.getModule(),
                 log.getBizNo(),
                 log.getContent(),
+                log.getRequestUri(),
+                log.getRequestMethod(),
+                log.isSuccess(),
+                log.getErrorMessage(),
                 log.getIp(),
                 log.getCreateTime()
         );

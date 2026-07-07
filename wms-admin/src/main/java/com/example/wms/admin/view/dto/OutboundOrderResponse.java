@@ -2,6 +2,7 @@ package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.OutboundOrder;
 import com.example.wms.common.enums.OutboundOrderStatus;
+import com.example.wms.common.enums.SourceType;
 
 import java.time.Instant;
 import java.util.List;
@@ -17,6 +18,9 @@ public record OutboundOrderResponse(
         String customerName,
         List<OrderItemResponse> items,
         List<AllocationResponse> allocations,
+        SourceType sourceType,
+        String sourceOrderNo,
+        String externalOrderNo,
         Instant shippedAt,
         Instant createdAt,
         Instant updatedAt
@@ -34,6 +38,9 @@ public record OutboundOrderResponse(
                 order.getCustomer() != null ? order.getCustomer().getName() : null,
                 order.getItems().stream().map(OrderItemResponse::from).toList(),
                 order.getAllocations().stream().map(AllocationResponse::from).toList(),
+                order.getSourceType(),
+                order.getSourceOrderNo(),
+                order.getExternalOrderNo(),
                 order.getShippedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()

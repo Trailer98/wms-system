@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.InboundOrderService;
@@ -29,9 +30,11 @@ public class InboundOrderController {
     }
 
     @PostMapping
+    @RequiresPermission("inbound:create")
     @SysOperationLog(
             operationType = "创建入库单",
             content = "创建入库单",
+            module = "入库管理",
             bizNo = "#request.orderNo()"
     )
     public ApiResponse<InboundOrderResponse> create(@Valid @RequestBody CreateInboundOrderRequest request) {
@@ -39,9 +42,11 @@ public class InboundOrderController {
     }
 
     @PutMapping("/{id}")
+    @RequiresPermission("inbound:update")
     @SysOperationLog(
             operationType = "编辑入库单",
             content = "编辑入库单",
+            module = "入库管理",
             bizNo = "#result.data().orderNo()"
     )
     public ApiResponse<InboundOrderResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateInboundOrderRequest request) {
@@ -49,9 +54,11 @@ public class InboundOrderController {
     }
 
     @PostMapping("/{id}/receive")
+    @RequiresPermission("inbound:complete")
     @SysOperationLog(
             operationType = "入库单收货",
             content = "入库单收货",
+            module = "入库管理",
             bizNo = "#result.data().orderNo()"
     )
     public ApiResponse<InboundOrderResponse> receive(@PathVariable Long id) {
@@ -59,19 +66,23 @@ public class InboundOrderController {
     }
 
     @GetMapping
+    @RequiresPermission("inbound:view")
     public ApiResponse<PageResponse<InboundOrderResponse>> search(InboundOrderQuery query) {
         return ApiResponse.ok(inboundOrderService.search(query));
     }
 
     @GetMapping("/{id}")
+    @RequiresPermission("inbound:view")
     public ApiResponse<InboundOrderResponse> getDetail(@PathVariable Long id) {
         return ApiResponse.ok(inboundOrderService.getDetail(id));
     }
 
     @DeleteMapping("/{id}")
+    @RequiresPermission("inbound:cancel")
     @SysOperationLog(
             operationType = "删除入库单",
-            content = "删除入库单"
+            content = "删除入库单",
+            module = "入库管理"
     )
     public ApiResponse<Void> delete(@PathVariable Long id) {
         inboundOrderService.delete(id);

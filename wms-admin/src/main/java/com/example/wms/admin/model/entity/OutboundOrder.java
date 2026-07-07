@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.example.wms.common.enums.OutboundOrderStatus;
+import com.example.wms.common.enums.SourceType;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,6 +24,9 @@ public class OutboundOrder {
     private Long warehouseId;
     private Long customerId;
     private Instant shippedAt;
+    private SourceType sourceType = SourceType.MANUAL;
+    private String sourceOrderNo;
+    private String externalOrderNo;
     @TableLogic(value = "1", delval = "0")
     private boolean enabled = true;
     private Instant createdAt;

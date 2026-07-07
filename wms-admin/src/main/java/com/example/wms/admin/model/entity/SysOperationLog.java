@@ -13,18 +13,42 @@ import java.time.LocalDateTime;
 public class SysOperationLog {
 
     private Long id;
+    private Long userId;
     private String operator;
     private String operationType;
+    private String module;
     private String bizNo;
     private String content;
+    private String requestUri;
+    private String requestMethod;
+    private boolean success = true;
+    private String errorMessage;
     private String ip;
     private LocalDateTime createTime;
 
-    public SysOperationLog(String operator, String operationType, String bizNo, String content, String ip) {
+    public SysOperationLog(
+            Long userId,
+            String operator,
+            String operationType,
+            String module,
+            String bizNo,
+            String content,
+            String requestUri,
+            String requestMethod,
+            boolean success,
+            String errorMessage,
+            String ip
+    ) {
+        this.userId = userId;
         this.operator = operator;
         this.operationType = operationType;
+        this.module = module;
         this.bizNo = bizNo;
         this.content = content;
+        this.requestUri = requestUri;
+        this.requestMethod = requestMethod;
+        this.success = success;
+        this.errorMessage = errorMessage;
         this.ip = ip;
         this.createTime = LocalDateTime.now();
     }

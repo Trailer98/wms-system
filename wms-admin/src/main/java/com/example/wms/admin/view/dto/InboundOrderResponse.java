@@ -2,6 +2,7 @@ package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.InboundOrder;
 import com.example.wms.common.enums.InboundOrderStatus;
+import com.example.wms.common.enums.SourceType;
 
 import java.time.Instant;
 import java.util.List;
@@ -16,6 +17,9 @@ public record InboundOrderResponse(
         String supplierCode,
         String supplierName,
         List<OrderItemResponse> items,
+        SourceType sourceType,
+        String sourceOrderNo,
+        String externalOrderNo,
         Instant receivedAt,
         Instant createdAt,
         Instant updatedAt
@@ -32,6 +36,9 @@ public record InboundOrderResponse(
                 order.getSupplier() != null ? order.getSupplier().getCode() : null,
                 order.getSupplier() != null ? order.getSupplier().getName() : null,
                 order.getItems().stream().map(OrderItemResponse::from).toList(),
+                order.getSourceType(),
+                order.getSourceOrderNo(),
+                order.getExternalOrderNo(),
                 order.getReceivedAt(),
                 order.getCreatedAt(),
                 order.getUpdatedAt()

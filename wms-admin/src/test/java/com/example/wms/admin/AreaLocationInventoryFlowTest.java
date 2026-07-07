@@ -39,6 +39,7 @@ import com.example.wms.common.enums.ExceptionType;
 import com.example.wms.common.enums.InboundOrderStatus;
 import com.example.wms.common.enums.LocationType;
 import com.example.wms.common.enums.MovementType;
+import com.example.wms.common.enums.OperationType;
 import com.example.wms.common.enums.OutboundOrderStatus;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -119,6 +120,7 @@ class AreaLocationInventoryFlowTest {
         assertEquals(100, inv.availableQuantity());
 
         StockMovementResponse movement = findMovement(order.orderNo(), MovementType.INBOUND);
+        assertEquals(OperationType.ON_HAND_INCREASE, movement.operationType());
         assertEquals(0, movement.beforeQuantity());
         assertEquals(100, movement.afterQuantity());
         assertEquals(0, movement.beforeReservedQuantity());
@@ -145,6 +147,7 @@ class AreaLocationInventoryFlowTest {
         assertEquals(storageLocationId, locked.allocations().get(0).locationId());
 
         StockMovementResponse movement = findMovement(created.orderNo(), MovementType.LOCK);
+        assertEquals(OperationType.STOCK_LOCK, movement.operationType());
         assertEquals(100, movement.beforeQuantity());
         assertEquals(100, movement.afterQuantity());
         assertEquals(0, movement.beforeReservedQuantity());
@@ -167,6 +170,7 @@ class AreaLocationInventoryFlowTest {
         assertEquals(70, inv.availableQuantity());
 
         StockMovementResponse movement = findMovement(created.orderNo(), MovementType.OUTBOUND);
+        assertEquals(OperationType.ON_HAND_DECREASE, movement.operationType());
         assertEquals(100, movement.beforeQuantity());
         assertEquals(70, movement.afterQuantity());
         assertEquals(30, movement.beforeReservedQuantity());
@@ -217,6 +221,9 @@ class AreaLocationInventoryFlowTest {
 
         PageResponse<StockMovementResponse> movements = inventoryService.searchTransactions(transactionQuery(created.orderNo()));
         assertTrue(movements.records().stream().anyMatch(m -> m.type() == MovementType.UNLOCK));
+
+        StockMovementResponse unlockMovement = findMovement(created.orderNo(), MovementType.UNLOCK);
+        assertEquals(OperationType.STOCK_UNLOCK, unlockMovement.operationType());
     }
 
     @Test

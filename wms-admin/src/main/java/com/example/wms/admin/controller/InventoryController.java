@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.InventoryService;
 import com.example.wms.admin.view.dto.InventoryQuery;
@@ -22,11 +23,13 @@ public class InventoryController {
     }
 
     @GetMapping
+    @RequiresPermission("inventory:view")
     public ApiResponse<PageResponse<InventoryResponse>> search(InventoryQuery query) {
         return ApiResponse.ok(inventoryService.search(query));
     }
 
     @GetMapping("/transactions/page")
+    @RequiresPermission("inventory:transaction:view")
     public ApiResponse<PageResponse<StockMovementResponse>> searchTransactions(StockMovementQuery query) {
         return ApiResponse.ok(inventoryService.searchTransactions(query));
     }

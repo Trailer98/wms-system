@@ -26,6 +26,7 @@ import com.example.wms.common.enums.ExceptionType;
 import com.example.wms.common.enums.InventoryStatus;
 import com.example.wms.common.enums.LockStatus;
 import com.example.wms.common.enums.MovementType;
+import com.example.wms.common.enums.OperationType;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -112,6 +113,7 @@ public class InventoryService {
                         .eq(query.getAreaId() != null, StockMovement::getAreaId, query.getAreaId())
                         .eq(query.getLocationId() != null, StockMovement::getLocationId, query.getLocationId())
                         .eq(query.getType() != null, StockMovement::getType, query.getType())
+                        .eq(query.getOperationType() != null, StockMovement::getOperationType, query.getOperationType())
                         .like(StringUtils.hasText(query.getBusinessNo()), StockMovement::getBusinessNo, query.getBusinessNo())
                         .ge(query.getStartTime() != null, StockMovement::getOccurredAt, query.getStartTime())
                         .le(query.getEndTime() != null, StockMovement::getOccurredAt, query.getEndTime())
@@ -170,7 +172,7 @@ public class InventoryService {
         InventorySnapshot after = inventory.snapshot();
 
         stockMovementMapper.insert(new StockMovement(
-                MovementType.INBOUND, warehouse, area, location, sku,
+                MovementType.INBOUND, OperationType.ON_HAND_INCREASE, warehouse, area, location, sku,
                 quantity, before, after,
                 businessNo, remark
         ));
@@ -199,7 +201,7 @@ public class InventoryService {
             OutboundStockLock lock = new OutboundStockLock(outboundOrderId, outboundOrderItemId, sku, warehouse, inventory.getArea(), inventory.getLocation(), take);
             outboundStockLockMapper.insert(lock);
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.LOCK, warehouse, inventory.getArea(), inventory.getLocation(), sku,
+                    MovementType.LOCK, OperationType.STOCK_LOCK, warehouse, inventory.getArea(), inventory.getLocation(), sku,
                     0, before, after,
                     businessNo, "lock inventory for outbound order"
             ));
@@ -248,7 +250,7 @@ public class InventoryService {
             WarehouseLocation location = warehouseLocationService.getById(lock.getLocationId());
 
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.OUTBOUND, warehouse, area, location, sku,
+                    MovementType.OUTBOUND, OperationType.ON_HAND_DECREASE, warehouse, area, location, sku,
                     -lock.getLockQty(), before, after,
                     businessNo, "confirm ship outbound order"
             ));
@@ -280,7 +282,7 @@ public class InventoryService {
             WarehouseLocation location = warehouseLocationService.getById(lock.getLocationId());
 
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.UNLOCK, warehouse, area, location, sku,
+                    MovementType.UNLOCK, OperationType.STOCK_UNLOCK, warehouse, area, location, sku,
                     0, before, after,
                     businessNo, "release lock for cancelled outbound order"
             ));

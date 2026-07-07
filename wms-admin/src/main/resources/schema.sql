@@ -314,3 +314,147 @@ SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE t
 PREPARE stmt FROM @stmt;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- inventory transaction operation_type (orthogonal to biz_type: "what changed" vs "which business triggered it")
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_movements' AND column_name = 'operation_type') = 0,
+    'ALTER TABLE stock_movements ADD COLUMN operation_type VARCHAR(32) NOT NULL DEFAULT ''UNKNOWN''', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- ERP-reserved fields on inbound/outbound orders (no push flow implemented, MANUAL is the only value used in V1)
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'inbound_orders' AND column_name = 'source_type') = 0,
+    'ALTER TABLE inbound_orders ADD COLUMN source_type VARCHAR(32) NOT NULL DEFAULT ''MANUAL''', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'inbound_orders' AND column_name = 'source_order_no') = 0,
+    'ALTER TABLE inbound_orders ADD COLUMN source_order_no VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'inbound_orders' AND column_name = 'external_order_no') = 0,
+    'ALTER TABLE inbound_orders ADD COLUMN external_order_no VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'outbound_orders' AND column_name = 'source_type') = 0,
+    'ALTER TABLE outbound_orders ADD COLUMN source_type VARCHAR(32) NOT NULL DEFAULT ''MANUAL''', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'outbound_orders' AND column_name = 'source_order_no') = 0,
+    'ALTER TABLE outbound_orders ADD COLUMN source_order_no VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'outbound_orders' AND column_name = 'external_order_no') = 0,
+    'ALTER TABLE outbound_orders ADD COLUMN external_order_no VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- minimal RBAC: users, roles, permissions and their relations
+create table if not exists sys_user (
+    id bigint not null,
+    username varchar(64) not null,
+    password_hash varchar(100) not null,
+    real_name varchar(64),
+    phone varchar(32),
+    email varchar(128),
+    status varchar(32) not null default 'ENABLED',
+    last_login_time timestamp null,
+    create_time timestamp not null,
+    update_time timestamp not null,
+    deleted tinyint(1) not null default 0,
+    primary key (id),
+    constraint uk_sys_user_username unique (username)
+);
+
+create table if not exists sys_role (
+    id bigint not null,
+    role_code varchar(64) not null,
+    role_name varchar(64) not null,
+    status varchar(32) not null default 'ENABLED',
+    remark varchar(255),
+    create_time timestamp not null,
+    update_time timestamp not null,
+    deleted tinyint(1) not null default 0,
+    primary key (id),
+    constraint uk_sys_role_code unique (role_code)
+);
+
+create table if not exists sys_permission (
+    id bigint not null,
+    permission_code varchar(100) not null,
+    permission_name varchar(100) not null,
+    permission_type varchar(32) not null,
+    parent_id bigint,
+    path varchar(255),
+    method varchar(16),
+    sort integer not null default 0,
+    status varchar(32) not null default 'ENABLED',
+    remark varchar(255),
+    create_time timestamp not null,
+    update_time timestamp not null,
+    primary key (id),
+    constraint uk_sys_permission_code unique (permission_code)
+);
+
+create table if not exists sys_user_role (
+    id bigint not null,
+    user_id bigint not null,
+    role_id bigint not null,
+    primary key (id),
+    constraint uk_sys_user_role unique (user_id, role_id)
+);
+
+create table if not exists sys_role_permission (
+    id bigint not null,
+    role_id bigint not null,
+    permission_id bigint not null,
+    primary key (id),
+    constraint uk_sys_role_permission unique (role_id, permission_id)
+);
+
+-- attach identity + outcome info to the existing operation log table
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'user_id') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN user_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'module') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN module VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'request_uri') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN request_uri VARCHAR(255) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'request_method') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN request_method VARCHAR(16) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'success') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN success TINYINT(1) NOT NULL DEFAULT 1', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'error_message') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN error_message VARCHAR(500) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

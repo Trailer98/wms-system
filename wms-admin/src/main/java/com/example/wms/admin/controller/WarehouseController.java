@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.WarehouseService;
@@ -25,12 +26,14 @@ public class WarehouseController {
     }
 
     @PostMapping
-    @SysOperationLog(operationType = "创建仓库", content = "创建仓库")
+    @RequiresPermission("warehouse:create")
+    @SysOperationLog(operationType = "创建仓库", content = "创建仓库", module = "基础资料")
     public ApiResponse<WarehouseResponse> create(@Valid @RequestBody CreateWarehouseRequest request) {
         return ApiResponse.ok(warehouseService.create(request));
     }
 
     @GetMapping
+    @RequiresPermission("warehouse:view")
     public ApiResponse<PageResponse<WarehouseResponse>> search(WarehouseQuery query) {
         return ApiResponse.ok(warehouseService.search(query));
     }

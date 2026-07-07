@@ -11,4 +11,6 @@ public @interface SysOperationLog {
     String content() default "";
 
     String bizNo() default "";
+
+    String module() default "";
 }

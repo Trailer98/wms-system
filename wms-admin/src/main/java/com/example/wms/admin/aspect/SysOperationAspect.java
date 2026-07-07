@@ -1,6 +1,8 @@
 package com.example.wms.admin.aspect;
 
 import com.example.wms.admin.annotation.SysOperationLog;
+import com.example.wms.admin.security.CurrentUser;
+import com.example.wms.admin.security.CurrentUserContext;
 import com.example.wms.admin.service.SysOperationLogAsyncService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -37,22 +39,38 @@ public class SysOperationAspect {
 
     @Around("@annotation(operationLog)")
     public Object around(ProceedingJoinPoint joinPoint, SysOperationLog operationLog) throws Throwable {
-        Object result = joinPoint.proceed();
-
-        String bizNo = resolveBizNo(joinPoint, result, operationLog.bizNo());
+        Object result = null;
+        boolean success = true;
+        String errorMessage = null;
         try {
-            sysOperationLogAsyncService.saveLog(
-                    operationLog.operationType(),
-                    bizNo,
-                    operationLog.content(),
-                    getClientIp()
-            );
-        } catch (RuntimeException ex) {
-            log.warn("submit operation log task failed, operationType={}, bizNo={}",
-                    operationLog.operationType(), bizNo, ex);
+            result = joinPoint.proceed();
+            return result;
+        } catch (Throwable ex) {
+            success = false;
+            errorMessage = ex.getMessage();
+            throw ex;
+        } finally {
+            String bizNo = resolveBizNo(joinPoint, result, operationLog.bizNo());
+            try {
+                CurrentUser currentUser = CurrentUserContext.get();
+                sysOperationLogAsyncService.saveLog(
+                        currentUser != null ? currentUser.userId() : null,
+                        currentUser != null ? currentUser.username() : "anonymous",
+                        operationLog.operationType(),
+                        operationLog.module(),
+                        bizNo,
+                        operationLog.content(),
+                        getRequestUri(),
+                        getRequestMethod(),
+                        success,
+                        errorMessage,
+                        getClientIp()
+                );
+            } catch (RuntimeException ex) {
+                log.warn("submit operation log task failed, operationType={}, bizNo={}",
+                        operationLog.operationType(), bizNo, ex);
+            }
         }
-
-        return result;
     }
 
     private String resolveBizNo(ProceedingJoinPoint joinPoint, Object result, String bizNoExpression) {
@@ -105,13 +123,27 @@ public class SysOperationAspect {
         }
     }
 
-    private String getClientIp() {
+    private HttpServletRequest currentRequest() {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-        if (attributes == null) {
+        return attributes != null ? attributes.getRequest() : null;
+    }
+
+    private String getRequestUri() {
+        HttpServletRequest request = currentRequest();
+        return request != null ? request.getRequestURI() : "";
+    }
+
+    private String getRequestMethod() {
+        HttpServletRequest request = currentRequest();
+        return request != null ? request.getMethod() : "";
+    }
+
+    private String getClientIp() {
+        HttpServletRequest request = currentRequest();
+        if (request == null) {
             return "";
         }
 
-        HttpServletRequest request = attributes.getRequest();
         String forwardedFor = request.getHeader("X-Forwarded-For");
         if (StringUtils.hasText(forwardedFor)) {
             return forwardedFor.split(",")[0].trim();

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.example.wms.common.enums.MovementType;
+import com.example.wms.common.enums.OperationType;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -17,6 +18,7 @@ public class StockMovement {
 
     private Long id;
     private MovementType type;
+    private OperationType operationType;
     private Long warehouseId;
     private Long skuId;
     private Long areaId;
@@ -55,6 +57,7 @@ public class StockMovement {
      */
     public StockMovement(
             MovementType type,
+            OperationType operationType,
             Warehouse warehouse,
             WarehouseArea area,
             WarehouseLocation location,
@@ -66,6 +69,7 @@ public class StockMovement {
             String remark
     ) {
         this.type = type;
+        this.operationType = operationType;
         this.warehouse = warehouse;
         this.warehouseId = warehouse.getId();
         this.area = area;

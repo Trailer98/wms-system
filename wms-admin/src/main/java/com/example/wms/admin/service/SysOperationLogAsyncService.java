@@ -22,13 +22,31 @@ public class SysOperationLogAsyncService {
 
     @Async("operationLogExecutor")
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveLog(String operationType, String bizNo, String content, String ip) {
+    public void saveLog(
+            Long userId,
+            String operator,
+            String operationType,
+            String module,
+            String bizNo,
+            String content,
+            String requestUri,
+            String requestMethod,
+            boolean success,
+            String errorMessage,
+            String ip
+    ) {
         try {
             SysOperationLog operationLog = new SysOperationLog(
-                    "admin",
+                    userId,
+                    operator,
                     operationType,
+                    module,
                     bizNo,
                     content,
+                    requestUri,
+                    requestMethod,
+                    success,
+                    errorMessage,
                     ip
             );
 

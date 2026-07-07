@@ -2,12 +2,14 @@ package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.StockMovement;
 import com.example.wms.common.enums.MovementType;
+import com.example.wms.common.enums.OperationType;
 
 import java.time.Instant;
 
 public record StockMovementResponse(
         Long id,
         MovementType type,
+        OperationType operationType,
         String businessNo,
         Long skuId,
         String skuCode,
@@ -36,6 +38,7 @@ public record StockMovementResponse(
         return new StockMovementResponse(
                 movement.getId(),
                 movement.getType(),
+                movement.getOperationType(),
                 movement.getBusinessNo(),
                 movement.getSku().getId(),
                 movement.getSku().getCode(),

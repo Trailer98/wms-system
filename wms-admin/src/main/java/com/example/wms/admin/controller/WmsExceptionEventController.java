@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.admin.service.WmsExceptionEventService;
 import com.example.wms.admin.view.dto.WmsExceptionEventQuery;
@@ -23,17 +24,20 @@ public class WmsExceptionEventController {
     }
 
     @GetMapping("/page")
+    @RequiresPermission("exception:view")
     public ApiResponse<PageResponse<WmsExceptionEventResponse>> search(WmsExceptionEventQuery query) {
         return ApiResponse.ok(wmsExceptionEventService.search(query));
     }
 
     @GetMapping("/{id}")
+    @RequiresPermission("exception:view")
     public ApiResponse<WmsExceptionEventResponse> getDetail(@PathVariable Long id) {
         return ApiResponse.ok(wmsExceptionEventService.getDetail(id));
     }
 
     @PatchMapping("/{id}/handled")
-    @SysOperationLog(operationType = "标记异常事件已处理", content = "标记异常事件已处理")
+    @RequiresPermission("exception:handle")
+    @SysOperationLog(operationType = "标记异常事件已处理", content = "标记异常事件已处理", module = "异常管理")
     public ApiResponse<WmsExceptionEventResponse> markHandled(@PathVariable Long id) {
         return ApiResponse.ok(wmsExceptionEventService.markHandled(id));
     }

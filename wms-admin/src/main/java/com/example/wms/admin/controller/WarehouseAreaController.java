@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.admin.service.WarehouseAreaService;
 import com.example.wms.admin.view.dto.CreateWarehouseAreaRequest;
@@ -33,41 +34,48 @@ public class WarehouseAreaController {
     }
 
     @PostMapping
-    @SysOperationLog(operationType = "创建库区", content = "创建库区")
+    @RequiresPermission("area:create")
+    @SysOperationLog(operationType = "创建库区", content = "创建库区", module = "基础资料")
     public ApiResponse<WarehouseAreaResponse> create(@Valid @RequestBody CreateWarehouseAreaRequest request) {
         return ApiResponse.ok(warehouseAreaService.create(request));
     }
 
     @PutMapping("/{id}")
-    @SysOperationLog(operationType = "编辑库区", content = "编辑库区")
+    @RequiresPermission("area:update")
+    @SysOperationLog(operationType = "编辑库区", content = "编辑库区", module = "基础资料")
     public ApiResponse<WarehouseAreaResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateWarehouseAreaRequest request) {
         return ApiResponse.ok(warehouseAreaService.update(id, request));
     }
 
     @PatchMapping("/{id}/status")
-    @SysOperationLog(operationType = "切换库区状态", content = "切换库区状态")
+    @RequiresPermission("area:disable")
+    @SysOperationLog(operationType = "切换库区状态", content = "切换库区状态", module = "基础资料")
     public ApiResponse<WarehouseAreaResponse> updateStatus(@PathVariable Long id, @Valid @RequestBody UpdateStatusRequest request) {
         return ApiResponse.ok(warehouseAreaService.updateStatus(id, request));
     }
 
     @DeleteMapping("/{id}")
-    @SysOperationLog(operationType = "删除库区", content = "删除库区")
+    @RequiresPermission("area:disable")
+    @SysOperationLog(operationType = "删除库区", content = "删除库区", module = "基础资料")
     public ApiResponse<Void> delete(@PathVariable Long id) {
         warehouseAreaService.delete(id);
         return ApiResponse.ok(null);
     }
 
     @GetMapping
+    @RequiresPermission("area:view")
     public ApiResponse<PageResponse<WarehouseAreaResponse>> search(WarehouseAreaQuery query) {
         return ApiResponse.ok(warehouseAreaService.search(query));
     }
 
     @GetMapping("/{id}")
+    @RequiresPermission("area:view")
     public ApiResponse<WarehouseAreaResponse> getDetail(@PathVariable Long id) {
         return ApiResponse.ok(warehouseAreaService.getDetail(id));
     }
 
     @GetMapping("/by-warehouse/{warehouseId}")
+    @RequiresPermission("area:view")
     public ApiResponse<List<WarehouseAreaResponse>> listByWarehouse(@PathVariable Long warehouseId) {
         return ApiResponse.ok(warehouseAreaService.listByWarehouse(warehouseId));
     }
