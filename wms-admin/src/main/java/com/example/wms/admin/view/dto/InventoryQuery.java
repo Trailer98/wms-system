@@ -15,4 +15,6 @@ public class InventoryQuery extends PageRequest {
     private Long areaId;
     private Long locationId;
     private InventoryStatus inventoryStatus;
+    private Boolean hasStock;
+    private Boolean onlyAvailable;
 }

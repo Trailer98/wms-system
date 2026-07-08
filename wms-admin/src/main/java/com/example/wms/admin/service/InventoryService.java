@@ -27,6 +27,7 @@ import com.example.wms.common.enums.InventoryStatus;
 import com.example.wms.common.enums.LockStatus;
 import com.example.wms.common.enums.MovementType;
 import com.example.wms.common.enums.OperationType;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -97,10 +98,17 @@ public class InventoryService {
                         .eq(query.getAreaId() != null, Inventory::getAreaId, query.getAreaId())
                         .eq(query.getLocationId() != null, Inventory::getLocationId, query.getLocationId())
                         .eq(query.getInventoryStatus() != null, Inventory::getInventoryStatus, query.getInventoryStatus())
+                        .gt(Boolean.TRUE.equals(query.getHasStock()), Inventory::getQuantity, 0)
+                        .apply(Boolean.TRUE.equals(query.getOnlyAvailable()), "quantity - reserved_quantity - frozen_quantity > 0")
                         .orderByAsc(Inventory::getWarehouseId, Inventory::getSkuId)
         );
 
         return PageResponse.from(page, inventory -> InventoryResponse.from(assemble(inventory)));
+    }
+
+    @Transactional(readOnly = true)
+    public InventoryResponse getDetail(Long id) {
+        return InventoryResponse.from(requireInventoryById(id));
     }
 
     @Transactional(readOnly = true)
@@ -125,17 +133,7 @@ public class InventoryService {
 
     @Transactional
     public void receive(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku, int quantity, String businessNo, String remark) {
-        if (!location.isUsable()) {
-            ExceptionType exceptionType = switch (location.getStatus()) {
-                case DISABLED -> ExceptionType.LOCATION_DISABLED;
-                case LOCKED -> ExceptionType.LOCATION_LOCKED;
-                case COUNTING -> ExceptionType.LOCATION_COUNTING;
-                default -> ExceptionType.LOCATION_CAPACITY_NOT_ENOUGH;
-            };
-            wmsExceptionEventService.record(exceptionType, businessNo, sku.getId(), warehouse.getId(), area.getId(), location.getId(),
-                    "location " + location.getLocationCode() + " status is " + location.getStatus() + ", cannot receive inbound");
-            throw new BusinessException("location " + location.getLocationCode() + " is not usable for inbound (status=" + location.getStatus() + ")");
-        }
+        assertLocationUsable(location, sku, warehouse, area, businessNo, "receive inbound");
 
         long conflictingSkuCount = inventoryMapper.selectCount(Wrappers.lambdaQuery(Inventory.class)
                 .eq(Inventory::getLocationId, location.getId())
@@ -154,15 +152,8 @@ public class InventoryService {
             throw new BusinessException("location " + location.getLocationCode() + " capacity is insufficient");
         }
 
-        Inventory inventory = findInventory(warehouse.getId(), sku.getId(), area.getId(), location.getId());
-        InventorySnapshot before;
-        if (inventory == null) {
-            inventory = new Inventory(warehouse, area, location, sku);
-            before = new InventorySnapshot(0, 0, 0);
-            inventoryMapper.insert(inventory);
-        } else {
-            before = inventory.snapshot();
-        }
+        Inventory inventory = findOrCreateInventory(warehouse, area, location, sku);
+        InventorySnapshot before = inventory.snapshot();
 
         inventory.increase(quantity);
         if (area.getAreaType() == AreaType.EXCEPTION) {
@@ -172,10 +163,77 @@ public class InventoryService {
         InventorySnapshot after = inventory.snapshot();
 
         stockMovementMapper.insert(new StockMovement(
-                MovementType.INBOUND, OperationType.ON_HAND_INCREASE, warehouse, area, location, sku,
+                MovementType.INBOUND, OperationType.INBOUND_RECEIVE, warehouse, area, location, sku,
                 quantity, before, after,
                 businessNo, remark
         ));
+    }
+
+    /**
+     * Shared by stock-adjust-order confirm and stock-count-task complete: both need "increase
+     * on-hand at a location and write a movement", differing only in the business movement/operation
+     * type recorded. Creates the {@link Inventory} row if this is the first stock ever recorded at
+     * this sku/location (e.g. adjusting in "found" stock, or a count profit at a previously-empty slot).
+     * <p>
+     * This method owns exactly one thing: lock the row (via {@link #findOrCreateInventory}) → read the
+     * "before" audit snapshot only after that lock is held → apply the atomic guarded UPDATE(s) → read
+     * "after" (still within the same lock, so it reflects exactly this call's own change, nothing a
+     * concurrent transaction could have interleaved) → write the movement. Every caller gets a
+     * before/after pair that is internally consistent (after - before == the change actually applied)
+     * even under concurrent callers hammering the same row, because the row lock serializes them.
+     * <p>
+     * Deliberately does not gate on {@link #assertLocationUsable}: whether the current location status
+     * is allowed to receive this change is a business-scenario decision, not something this low-level
+     * mutation primitive should hardcode. Stock-count-task's location is expected to be COUNTING at
+     * the moment its result gets applied here, and stock-adjust-order's {@code confirm()} does call
+     * {@link #assertLocationUsable} itself before invoking this method — see that call site.
+     */
+    @Transactional
+    public StockMovement increaseOnHand(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku,
+            int qty, MovementType movementType, OperationType operationType, String businessNo, String remark) {
+        Inventory inventory = findOrCreateInventory(warehouse, area, location, sku);
+        InventorySnapshot before = inventory.snapshot();
+        inventoryMapper.increaseOnHand(inventory.getId(), qty);
+        if (area.getAreaType() == AreaType.EXCEPTION) {
+            inventoryMapper.increaseFrozen(inventory.getId(), qty);
+        }
+        InventorySnapshot after = requireInventoryById(inventory.getId()).snapshot();
+
+        StockMovement movement = new StockMovement(
+                movementType, operationType, warehouse, area, location, sku,
+                qty, before, after,
+                businessNo, remark
+        );
+        stockMovementMapper.insert(movement);
+        return movement;
+    }
+
+    /**
+     * Counterpart to {@link #increaseOnHand} — same locking/before-after contract, via
+     * {@link #requireInventory} instead of {@link #findOrCreateInventory} (a decrease can never
+     * legitimately target a row that doesn't exist yet). The guarded {@link InventoryMapper#decreaseOnHand}
+     * update enforces on-hand staying at or above reserved+frozen in one atomic condition, covering
+     * "cannot go negative" and "cannot dip below locked/frozen" in a single check. Also does not gate
+     * on {@link #assertLocationUsable}; see {@link #increaseOnHand} for why that's the caller's job.
+     */
+    @Transactional
+    public StockMovement decreaseOnHand(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku,
+            int qty, MovementType movementType, OperationType operationType, String businessNo, String remark) {
+        Inventory inventory = requireInventory(warehouse.getId(), sku.getId(), area.getId(), location.getId());
+        InventorySnapshot before = inventory.snapshot();
+        int affected = inventoryMapper.decreaseOnHand(inventory.getId(), qty);
+        if (affected == 0) {
+            throw new BusinessException("on-hand quantity at location " + location.getLocationCode() + " is insufficient to decrease by " + qty);
+        }
+        InventorySnapshot after = new InventorySnapshot(before.onHandQty() - qty, before.lockedQty(), before.frozenQty());
+
+        StockMovement movement = new StockMovement(
+                movementType, operationType, warehouse, area, location, sku,
+                -qty, before, after,
+                businessNo, remark
+        );
+        stockMovementMapper.insert(movement);
+        return movement;
     }
 
     @Transactional
@@ -201,7 +259,7 @@ public class InventoryService {
             OutboundStockLock lock = new OutboundStockLock(outboundOrderId, outboundOrderItemId, sku, warehouse, inventory.getArea(), inventory.getLocation(), take);
             outboundStockLockMapper.insert(lock);
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.LOCK, OperationType.STOCK_LOCK, warehouse, inventory.getArea(), inventory.getLocation(), sku,
+                    MovementType.LOCK, OperationType.OUTBOUND_LOCK, warehouse, inventory.getArea(), inventory.getLocation(), sku,
                     0, before, after,
                     businessNo, "lock inventory for outbound order"
             ));
@@ -250,7 +308,7 @@ public class InventoryService {
             WarehouseLocation location = warehouseLocationService.getById(lock.getLocationId());
 
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.OUTBOUND, OperationType.ON_HAND_DECREASE, warehouse, area, location, sku,
+                    MovementType.OUTBOUND, OperationType.OUTBOUND_SHIP, warehouse, area, location, sku,
                     -lock.getLockQty(), before, after,
                     businessNo, "confirm ship outbound order"
             ));
@@ -282,7 +340,7 @@ public class InventoryService {
             WarehouseLocation location = warehouseLocationService.getById(lock.getLocationId());
 
             stockMovementMapper.insert(new StockMovement(
-                    MovementType.UNLOCK, OperationType.STOCK_UNLOCK, warehouse, area, location, sku,
+                    MovementType.UNLOCK, OperationType.OUTBOUND_CANCEL_UNLOCK, warehouse, area, location, sku,
                     0, before, after,
                     businessNo, "release lock for cancelled outbound order"
             ));
@@ -322,6 +380,48 @@ public class InventoryService {
         return usable;
     }
 
+    public void assertLocationUsable(WarehouseLocation location, Sku sku, Warehouse warehouse, WarehouseArea area, String businessNo, String action) {
+        if (location.isUsable()) {
+            return;
+        }
+        ExceptionType exceptionType = switch (location.getStatus()) {
+            case DISABLED -> ExceptionType.LOCATION_DISABLED;
+            case LOCKED -> ExceptionType.LOCATION_LOCKED;
+            case COUNTING -> ExceptionType.LOCATION_COUNTING;
+            default -> ExceptionType.LOCATION_CAPACITY_NOT_ENOUGH;
+        };
+        wmsExceptionEventService.record(exceptionType, businessNo, sku.getId(), warehouse.getId(), area.getId(), location.getId(),
+                "location " + location.getLocationCode() + " status is " + location.getStatus() + ", cannot " + action);
+        throw new BusinessException("location " + location.getLocationCode() + " is not usable for " + action + " (status=" + location.getStatus() + ")");
+    }
+
+    /**
+     * Locks the target row (or creates and locks it, for the first stock ever recorded at this
+     * sku/location) before returning it, so every caller's subsequent "read before snapshot, mutate,
+     * read after snapshot" sequence is race-free: no other transaction can touch this row until this
+     * one commits or rolls back. Relies on the existing {@code uk_inventory_dimension} unique
+     * constraint to make the create path safe too — if two transactions both find no row and both
+     * try to insert, the loser gets a DuplicateKeyException instead of a duplicate row, and simply
+     * re-locks the row the winner just committed.
+     */
+    private Inventory findOrCreateInventory(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku) {
+        Inventory inventory = inventoryMapper.selectByDimensionForUpdate(warehouse.getId(), sku.getId(), area.getId(), location.getId());
+        if (inventory != null) {
+            return inventory;
+        }
+        Inventory created = new Inventory(warehouse, area, location, sku);
+        try {
+            inventoryMapper.insert(created);
+            return created;
+        } catch (DuplicateKeyException raceLostToConcurrentCreate) {
+            Inventory existing = inventoryMapper.selectByDimensionForUpdate(warehouse.getId(), sku.getId(), area.getId(), location.getId());
+            if (existing == null) {
+                throw new BusinessException("failed to resolve inventory row after a concurrent create conflict");
+            }
+            return existing;
+        }
+    }
+
     private Inventory findInventory(Long warehouseId, Long skuId, Long areaId, Long locationId) {
         return inventoryMapper.selectOne(Wrappers.lambdaQuery(Inventory.class)
                 .eq(Inventory::getWarehouseId, warehouseId)
@@ -330,12 +430,31 @@ public class InventoryService {
                 .eq(Inventory::getLocationId, locationId));
     }
 
+    /** Locked counterpart to {@link #findInventory}; see {@link #findOrCreateInventory} for why. */
     private Inventory requireInventory(Long warehouseId, Long skuId, Long areaId, Long locationId) {
-        Inventory inventory = findInventory(warehouseId, skuId, areaId, locationId);
+        Inventory inventory = inventoryMapper.selectByDimensionForUpdate(warehouseId, skuId, areaId, locationId);
         if (inventory == null) {
             throw new BusinessException("inventory not found for locked allocation");
         }
         return inventory;
+    }
+
+    /**
+     * Looks an inventory row up by its own id (as opposed to {@link #findInventory}, which looks it
+     * up by dimension). Used by stock-adjust-order to anchor an adjustment to one specific balance
+     * row, re-resolved fresh at confirm time rather than trusting anything cached at create time.
+     */
+    public Inventory requireInventoryById(Long id) {
+        Inventory inventory = inventoryMapper.selectById(id);
+        if (inventory == null) {
+            throw new BusinessException("inventory record not found: " + id);
+        }
+        return assemble(inventory);
+    }
+
+    /** Exposes {@link #findInventory} for stock-adjust-order to look up the row an off-book increase just landed on. */
+    public Inventory getByDimension(Long warehouseId, Long skuId, Long areaId, Long locationId) {
+        return findInventory(warehouseId, skuId, areaId, locationId);
     }
 
     private Inventory assemble(Inventory inventory) {

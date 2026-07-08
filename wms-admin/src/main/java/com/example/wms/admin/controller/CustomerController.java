@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.CustomerService;
@@ -25,12 +26,14 @@ public class CustomerController {
     }
 
     @PostMapping
-    @SysOperationLog(operationType = "创建客户", content = "创建客户")
+    @RequiresPermission("customer:create")
+    @SysOperationLog(operationType = "创建客户", content = "创建客户", module = "基础资料")
     public ApiResponse<CustomerResponse> create(@Valid @RequestBody CreateCustomerRequest request) {
         return ApiResponse.ok(customerService.create(request));
     }
 
     @GetMapping
+    @RequiresPermission("customer:view")
     public ApiResponse<PageResponse<CustomerResponse>> search(CustomerQuery query) {
         return ApiResponse.ok(customerService.search(query));
     }

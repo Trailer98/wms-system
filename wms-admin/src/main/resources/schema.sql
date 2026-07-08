@@ -458,3 +458,177 @@ SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE t
 PREPARE stmt FROM @stmt;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
+
+-- operation_type semantic rework: rename technical values to business-action values on existing rows.
+-- Plain UPDATEs are inherently idempotent (after the first run no row still holds the old value).
+UPDATE stock_movements SET operation_type = 'INBOUND_RECEIVE' WHERE operation_type = 'ON_HAND_INCREASE' AND type = 'INBOUND';
+UPDATE stock_movements SET operation_type = 'OUTBOUND_SHIP' WHERE operation_type = 'ON_HAND_DECREASE' AND type = 'OUTBOUND';
+UPDATE stock_movements SET operation_type = 'OUTBOUND_LOCK' WHERE operation_type = 'STOCK_LOCK';
+UPDATE stock_movements SET operation_type = 'OUTBOUND_CANCEL_UNLOCK' WHERE operation_type = 'STOCK_UNLOCK';
+UPDATE stock_movements SET operation_type = 'UNKNOWN' WHERE operation_type NOT IN (
+    'INBOUND_RECEIVE', 'OUTBOUND_LOCK', 'OUTBOUND_CANCEL_UNLOCK', 'OUTBOUND_SHIP',
+    'STOCK_ADJUST_INCREASE', 'STOCK_ADJUST_DECREASE', 'STOCK_COUNT_PROFIT', 'STOCK_COUNT_LOSS',
+    'STOCK_FREEZE', 'STOCK_UNFREEZE', 'TRANSFER_OUT', 'TRANSFER_IN', 'UNKNOWN'
+);
+
+-- stock_movements never had any indexes despite being filtered/sorted on all of these; add them now.
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_movements' AND index_name = 'idx_stock_movements_operation_type') = 0,
+    'ALTER TABLE stock_movements ADD INDEX idx_stock_movements_operation_type (operation_type)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_movements' AND index_name = 'idx_stock_movements_type_business_no') = 0,
+    'ALTER TABLE stock_movements ADD INDEX idx_stock_movements_type_business_no (type, business_no)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_movements' AND index_name = 'idx_stock_movements_dimension_time') = 0,
+    'ALTER TABLE stock_movements ADD INDEX idx_stock_movements_dimension_time (sku_id, warehouse_id, area_id, location_id, occurred_at)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- stock adjust order: manual inventory correction, DRAFT -> SUBMITTED -> COMPLETED (or CANCELLED from
+-- either DRAFT/SUBMITTED). Approve+execute are merged into a single "confirm" step for this rollout.
+create table if not exists stock_adjust_order (
+    id bigint not null,
+    adjust_no varchar(64) not null,
+    status varchar(32) not null,
+    reason_type varchar(32) not null,
+    reason varchar(255),
+    warehouse_id bigint not null,
+    created_by varchar(64),
+    confirmed_by varchar(64),
+    confirmed_at timestamp null,
+    cancelled_by varchar(64),
+    cancelled_at timestamp null,
+    cancel_reason varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id),
+    constraint uk_stock_adjust_order_no unique (adjust_no),
+    index idx_stock_adjust_order_status_created (status, created_at)
+);
+
+create table if not exists stock_adjust_order_item (
+    id bigint not null,
+    adjust_order_id bigint not null,
+    sku_id bigint not null,
+    warehouse_id bigint not null,
+    area_id bigint not null,
+    location_id bigint not null,
+    adjust_type varchar(16) not null,
+    adjust_qty integer not null,
+    before_on_hand_qty integer,
+    after_on_hand_qty integer,
+    before_locked_qty integer,
+    after_locked_qty integer,
+    before_frozen_qty integer,
+    after_frozen_qty integer,
+    before_available_qty integer,
+    after_available_qty integer,
+    remark varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id),
+    index idx_stock_adjust_order_item_order (adjust_order_id),
+    index idx_stock_adjust_order_item_dimension (sku_id, warehouse_id, area_id, location_id)
+);
+
+-- stock count task: DRAFT -> COUNTING (book snapshot taken, locations locked to COUNTING) -> COMPLETED
+-- (diffs applied, locations restored) or CANCELLED from either DRAFT/COUNTING. Submit+complete are
+-- merged into a single "complete" step for this rollout; COUNTING covers "recording actuals".
+create table if not exists stock_count_task (
+    id bigint not null,
+    count_no varchar(64) not null,
+    warehouse_id bigint not null,
+    area_id bigint,
+    location_id bigint,
+    status varchar(32) not null,
+    remark varchar(255),
+    created_by varchar(64),
+    completed_by varchar(64),
+    completed_at timestamp null,
+    cancelled_by varchar(64),
+    cancelled_at timestamp null,
+    cancel_reason varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id),
+    constraint uk_stock_count_task_no unique (count_no),
+    index idx_stock_count_task_status_created (status, created_at)
+);
+
+create table if not exists stock_count_item (
+    id bigint not null,
+    count_task_id bigint not null,
+    sku_id bigint not null,
+    warehouse_id bigint not null,
+    area_id bigint not null,
+    location_id bigint not null,
+    book_on_hand_qty integer not null,
+    book_locked_qty integer not null,
+    book_frozen_qty integer not null,
+    book_available_qty integer not null,
+    actual_qty integer,
+    diff_qty integer,
+    status varchar(16) not null,
+    remark varchar(255),
+    enabled tinyint(1) not null,
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id),
+    index idx_stock_count_item_task (count_task_id),
+    index idx_stock_count_item_dimension (sku_id, warehouse_id, area_id, location_id)
+);
+
+-- Anchor stock adjustments to a real inventory row instead of a free sku+location combination.
+-- Nullable: only the off-book "create new inventory" increase mode is allowed to leave it unset.
+-- Historical rows keep inventory_id = NULL; they are not backfilled and still display fine off of
+-- their existing sku/warehouse/area/location snapshot columns.
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'inventory_id') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN inventory_id BIGINT NULL COMMENT ''库存余额ID''', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND index_name = 'idx_stock_adjust_order_item_inventory') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD INDEX idx_stock_adjust_order_item_inventory (inventory_id)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- uk_inventory_dimension (warehouse_id, sku_id, area_id, location_id), added a few rounds ago above,
+-- is what actually enforces "one balance row per dimension" — it already exists by the time this
+-- comment is read (this file has run idempotently on every startup since). InventoryStatus is not
+-- part of the key: it only ever takes NORMAL/EXCEPTION and is derived purely from area_id at
+-- creation time (see Inventory's constructor), so it can never vary independently within a fixed
+-- (warehouse,sku,area,location) tuple — folding it into the key would be redundant, not stricter.
+-- To manually check for pre-existing duplicate dimensions before trusting this constraint on a new
+-- environment, run:
+--   SELECT sku_id, warehouse_id, area_id, location_id, COUNT(*) AS cnt
+--   FROM inventory
+--   GROUP BY sku_id, warehouse_id, area_id, location_id
+--   HAVING COUNT(*) > 1;
+-- (Not run automatically here: if it ever found rows, blindly merging or deleting them would be a
+-- destructive, business-meaning-laden decision that belongs to a human, not a startup script.)
+
+-- Unified business-number generator: one row per (biz_type, seq_date), current_value incremented
+-- under SELECT ... FOR UPDATE by BizNoGeneratorService. New table, no historical-data risk.
+create table if not exists biz_sequence (
+    id bigint not null,
+    biz_type varchar(64) not null,
+    seq_date varchar(8) not null,
+    prefix varchar(16) not null,
+    current_value bigint not null,
+    remark varchar(255),
+    created_at timestamp not null,
+    updated_at timestamp not null,
+    primary key (id),
+    constraint uk_biz_sequence_type_date unique (biz_type, seq_date)
+);

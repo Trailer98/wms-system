@@ -9,7 +9,8 @@ public enum MovementType {
     OUTBOUND("OUTBOUND", "出库"),
     ADJUSTMENT("ADJUSTMENT", "库存调整"),
     LOCK("LOCK", "锁库"),
-    UNLOCK("UNLOCK", "解锁");
+    UNLOCK("UNLOCK", "解锁"),
+    COUNT("COUNT", "库存盘点");
 
     @EnumValue
     private final String code;

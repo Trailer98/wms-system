@@ -88,7 +88,28 @@ public class DataInitializer implements ApplicationRunner {
             new PermissionSeed("role:update", "编辑角色", PermissionType.BUTTON, 102),
             new PermissionSeed("role:assign", "分配角色权限", PermissionType.BUTTON, 103),
             new PermissionSeed("permission:view", "权限查看", PermissionType.MENU, 110),
-            new PermissionSeed("permission:assign", "权限分配", PermissionType.BUTTON, 111)
+            new PermissionSeed("permission:assign", "权限分配", PermissionType.BUTTON, 111),
+            new PermissionSeed("stock-adjust:view", "库存调整查看", PermissionType.MENU, 120),
+            new PermissionSeed("stock-adjust:create", "创建库存调整单", PermissionType.BUTTON, 121),
+            new PermissionSeed("stock-adjust:update", "编辑库存调整单", PermissionType.BUTTON, 122),
+            new PermissionSeed("stock-adjust:submit", "提交库存调整单", PermissionType.BUTTON, 123),
+            new PermissionSeed("stock-adjust:confirm", "确认库存调整单", PermissionType.BUTTON, 124),
+            new PermissionSeed("stock-adjust:cancel", "取消库存调整单", PermissionType.BUTTON, 125),
+            new PermissionSeed("stock-count:view", "库存盘点查看", PermissionType.MENU, 130),
+            new PermissionSeed("stock-count:create", "创建库存盘点任务", PermissionType.BUTTON, 131),
+            new PermissionSeed("stock-count:start", "开始库存盘点", PermissionType.BUTTON, 132),
+            new PermissionSeed("stock-count:record", "录入盘点实盘数量", PermissionType.BUTTON, 133),
+            new PermissionSeed("stock-count:complete", "完成库存盘点", PermissionType.BUTTON, 134),
+            new PermissionSeed("stock-count:cancel", "取消库存盘点", PermissionType.BUTTON, 135),
+            new PermissionSeed("customer:view", "客户查看", PermissionType.MENU, 140),
+            new PermissionSeed("customer:create", "新增客户", PermissionType.BUTTON, 141),
+            new PermissionSeed("customer:update", "编辑客户", PermissionType.BUTTON, 142),
+            new PermissionSeed("customer:disable", "停用客户", PermissionType.BUTTON, 143),
+            new PermissionSeed("supplier:view", "供应商查看", PermissionType.MENU, 150),
+            new PermissionSeed("supplier:create", "新增供应商", PermissionType.BUTTON, 151),
+            new PermissionSeed("supplier:update", "编辑供应商", PermissionType.BUTTON, 152),
+            new PermissionSeed("supplier:disable", "停用供应商", PermissionType.BUTTON, 153),
+            new PermissionSeed("operation-log:view", "操作日志查看", PermissionType.MENU, 160)
     );
 
     private final SysPermissionMapper sysPermissionMapper;
@@ -114,13 +135,63 @@ public class DataInitializer implements ApplicationRunner {
         this.passwordEncoder = passwordEncoder;
     }
 
+    // Permission codes added in this rollout (stock-adjust/stock-count/customer/supplier/operation-log).
+    // assignIfEmpty() below only fires for a role with zero grants, so it won't reach roles that were
+    // already seeded by a prior startup (true for any long-lived environment). ensureNewPermissionGrants()
+    // is the idempotent top-up for that case: it checks each (role, permission) pair individually and only
+    // inserts what's missing, so it never touches grants an operator has since customized by hand.
+    private static final Set<String> NEW_ADJUST_AND_COUNT_CODES = Set.of(
+            "stock-adjust:view", "stock-adjust:create", "stock-adjust:update", "stock-adjust:submit", "stock-adjust:confirm", "stock-adjust:cancel",
+            "stock-count:view", "stock-count:create", "stock-count:start", "stock-count:record", "stock-count:complete", "stock-count:cancel",
+            "customer:view", "customer:create", "customer:update", "customer:disable",
+            "supplier:view", "supplier:create", "supplier:update", "supplier:disable",
+            "operation-log:view"
+    );
+
+    private static final Set<String> NEW_WAREHOUSE_OPERATOR_CODES = Set.of(
+            "stock-adjust:view", "stock-adjust:create", "stock-adjust:update", "stock-adjust:submit",
+            "stock-count:view", "stock-count:create", "stock-count:start", "stock-count:record",
+            "customer:view", "supplier:view"
+    );
+
+    private static final Set<String> NEW_INVENTORY_VIEWER_CODES = Set.of(
+            "stock-adjust:view", "stock-count:view", "customer:view", "supplier:view"
+    );
+
     @Override
     @Transactional
     public void run(ApplicationArguments args) {
         Map<String, SysPermission> permissionsByCode = seedPermissions();
         Map<String, SysRole> rolesByCode = seedRoles();
         seedRolePermissions(rolesByCode, permissionsByCode);
+        ensureNewPermissionGrants(rolesByCode, permissionsByCode);
         seedAdminUser(rolesByCode);
+    }
+
+    private void ensureNewPermissionGrants(Map<String, SysRole> roles, Map<String, SysPermission> permissions) {
+        ensureGranted(roles.get("ADMIN"), NEW_ADJUST_AND_COUNT_CODES, permissions);
+        ensureGranted(roles.get("WAREHOUSE_MANAGER"), NEW_ADJUST_AND_COUNT_CODES, permissions);
+        ensureGranted(roles.get("WAREHOUSE_OPERATOR"), NEW_WAREHOUSE_OPERATOR_CODES, permissions);
+        ensureGranted(roles.get("INVENTORY_VIEWER"), NEW_INVENTORY_VIEWER_CODES, permissions);
+    }
+
+    private void ensureGranted(SysRole role, Collection<String> codes, Map<String, SysPermission> permissions) {
+        if (role == null) {
+            return;
+        }
+        for (String code : codes) {
+            SysPermission permission = permissions.get(code);
+            if (permission == null) {
+                log.warn("skip granting unknown permission code {} to role {}", code, role.getRoleCode());
+                continue;
+            }
+            long exists = sysRolePermissionMapper.selectCount(Wrappers.lambdaQuery(SysRolePermission.class)
+                    .eq(SysRolePermission::getRoleId, role.getId())
+                    .eq(SysRolePermission::getPermissionId, permission.getId()));
+            if (exists == 0) {
+                sysRolePermissionMapper.insert(new SysRolePermission(role.getId(), permission.getId()));
+            }
+        }
     }
 
     private Map<String, SysPermission> seedPermissions() {
@@ -178,7 +249,10 @@ public class DataInitializer implements ApplicationRunner {
                 "inbound:view", "inbound:create", "inbound:update", "inbound:complete", "inbound:cancel",
                 "outbound:view", "outbound:create", "outbound:lock", "outbound:confirm", "outbound:cancel", "outbound:allocation:view",
                 "inventory:view", "inventory:transaction:view",
-                "exception:view"
+                "exception:view",
+                "stock-adjust:view", "stock-adjust:create", "stock-adjust:update", "stock-adjust:submit",
+                "stock-count:view", "stock-count:create", "stock-count:start", "stock-count:record",
+                "customer:view", "supplier:view"
         );
     }
 
@@ -187,7 +261,9 @@ public class DataInitializer implements ApplicationRunner {
                 "warehouse:view", "area:view", "location:view", "sku:view",
                 "inbound:view", "outbound:view",
                 "inventory:view", "inventory:transaction:view",
-                "exception:view"
+                "exception:view",
+                "stock-adjust:view", "stock-count:view",
+                "customer:view", "supplier:view"
         );
     }
 

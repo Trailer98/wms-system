@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.service.SysOperationLogService;
 import com.example.wms.common.common.PageResponse;
 import com.example.wms.admin.view.dto.SysOperationLogQuery;
@@ -20,6 +21,7 @@ public class SysOperationLogController {
     }
 
     @GetMapping
+    @RequiresPermission("operation-log:view")
     public ApiResponse<PageResponse<SysOperationLogResponse>> search(SysOperationLogQuery query) {
         return ApiResponse.ok(sysOperationLogService.search(query));
     }

@@ -6,6 +6,7 @@ import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.OutboundOrder;
 import com.example.wms.admin.model.entity.OutboundOrderItem;
 import com.example.wms.admin.model.entity.OutboundStockLock;
+import com.example.wms.common.enums.BizNoType;
 import com.example.wms.common.enums.OutboundOrderStatus;
 import com.example.wms.admin.model.entity.Customer;
 import com.example.wms.admin.model.entity.Sku;
@@ -37,6 +38,7 @@ public class OutboundOrderService {
     private final CustomerService customerService;
     private final WarehouseAreaService warehouseAreaService;
     private final WarehouseLocationService warehouseLocationService;
+    private final BizNoGeneratorService bizNoGeneratorService;
 
     public OutboundOrderService(
             OutboundOrderMapper outboundOrderMapper,
@@ -47,7 +49,8 @@ public class OutboundOrderService {
             InventoryService inventoryService,
             CustomerService customerService,
             WarehouseAreaService warehouseAreaService,
-            WarehouseLocationService warehouseLocationService
+            WarehouseLocationService warehouseLocationService,
+            BizNoGeneratorService bizNoGeneratorService
     ) {
         this.outboundOrderMapper = outboundOrderMapper;
         this.outboundOrderItemMapper = outboundOrderItemMapper;
@@ -58,17 +61,15 @@ public class OutboundOrderService {
         this.customerService = customerService;
         this.warehouseAreaService = warehouseAreaService;
         this.warehouseLocationService = warehouseLocationService;
+        this.bizNoGeneratorService = bizNoGeneratorService;
     }
 
+    /** The system always mints its own order number; any {@code orderNo} the client sends is ignored. */
     @Transactional
     public OutboundOrderResponse create(CreateOutboundOrderRequest request) {
-        if (outboundOrderMapper.selectCount(Wrappers.lambdaQuery(OutboundOrder.class)
-                .eq(OutboundOrder::getOrderNo, request.orderNo())) > 0) {
-            throw new BusinessException("outbound order number already exists");
-        }
         Warehouse warehouse = warehouseService.getById(request.warehouseId());
         Customer customer = request.customerId() != null ? customerService.getById(request.customerId()) : null;
-        OutboundOrder order = new OutboundOrder(request.orderNo(), warehouse, customer);
+        OutboundOrder order = new OutboundOrder(bizNoGeneratorService.generate(BizNoType.OUTBOUND_ORDER), warehouse, customer);
 
         addItems(order, request.items());
 

@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.InboundOrder;
 import com.example.wms.admin.model.entity.InboundOrderItem;
+import com.example.wms.common.enums.BizNoType;
 import com.example.wms.common.enums.InboundOrderStatus;
 import com.example.wms.admin.model.entity.Sku;
 import com.example.wms.admin.model.entity.Supplier;
@@ -36,6 +37,7 @@ public class InboundOrderService {
     private final SupplierService supplierService;
     private final WarehouseAreaService warehouseAreaService;
     private final WarehouseLocationService warehouseLocationService;
+    private final BizNoGeneratorService bizNoGeneratorService;
 
     public InboundOrderService(
             InboundOrderMapper inboundOrderMapper,
@@ -45,7 +47,8 @@ public class InboundOrderService {
             InventoryService inventoryService,
             SupplierService supplierService,
             WarehouseAreaService warehouseAreaService,
-            WarehouseLocationService warehouseLocationService
+            WarehouseLocationService warehouseLocationService,
+            BizNoGeneratorService bizNoGeneratorService
     ) {
         this.inboundOrderMapper = inboundOrderMapper;
         this.inboundOrderItemMapper = inboundOrderItemMapper;
@@ -55,17 +58,15 @@ public class InboundOrderService {
         this.supplierService = supplierService;
         this.warehouseAreaService = warehouseAreaService;
         this.warehouseLocationService = warehouseLocationService;
+        this.bizNoGeneratorService = bizNoGeneratorService;
     }
 
+    /** The system always mints its own order number; any {@code orderNo} the client sends is ignored. */
     @Transactional
     public InboundOrderResponse create(CreateInboundOrderRequest request) {
-        if (inboundOrderMapper.selectCount(Wrappers.lambdaQuery(InboundOrder.class)
-                .eq(InboundOrder::getOrderNo, request.orderNo())) > 0) {
-            throw new BusinessException("inbound order number already exists");
-        }
         Warehouse warehouse = warehouseService.getById(request.warehouseId());
         Supplier supplier = request.supplierId() != null ? supplierService.getById(request.supplierId()) : null;
-        InboundOrder order = new InboundOrder(request.orderNo(), warehouse, supplier);
+        InboundOrder order = new InboundOrder(bizNoGeneratorService.generate(BizNoType.INBOUND_ORDER), warehouse, supplier);
 
         addItems(order, warehouse, request.items());
 

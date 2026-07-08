@@ -98,6 +98,28 @@ class AuthAndPermissionTest {
     }
 
     @Test
+    void inventoryViewerIsForbiddenFromConfirmingStockAdjustOrder() {
+        String viewerToken = login(viewerUsername, "viewer123");
+        assertNotNull(viewerToken);
+
+        // Same reasoning as the outbound:lock case: the permission check happens before the
+        // controller method body runs, so a non-existent order id still proves enforcement.
+        ResponseEntity<ApiResponse> response = postWithToken("/stock-adjust-orders/999999999/confirm", viewerToken);
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(403, response.getBody().code());
+    }
+
+    @Test
+    void inventoryViewerIsForbiddenFromViewingOperationLogs() {
+        String viewerToken = login(viewerUsername, "viewer123");
+        assertNotNull(viewerToken);
+
+        ResponseEntity<ApiResponse> response = getWithToken("/operation-logs", viewerToken);
+        assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
+        assertEquals(403, response.getBody().code());
+    }
+
+    @Test
     void unauthenticatedRequestIsRejected() {
         HttpHeaders headers = new HttpHeaders();
         ResponseEntity<ApiResponse> response = restTemplate.exchange(

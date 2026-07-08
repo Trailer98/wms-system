@@ -1,5 +1,6 @@
 package com.example.wms.admin.controller;
 
+import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.SupplierService;
@@ -25,12 +26,14 @@ public class SupplierController {
     }
 
     @PostMapping
-    @SysOperationLog(operationType = "创建供应商", content = "创建供应商")
+    @RequiresPermission("supplier:create")
+    @SysOperationLog(operationType = "创建供应商", content = "创建供应商", module = "基础资料")
     public ApiResponse<SupplierResponse> create(@Valid @RequestBody CreateSupplierRequest request) {
         return ApiResponse.ok(supplierService.create(request));
     }
 
     @GetMapping
+    @RequiresPermission("supplier:view")
     public ApiResponse<PageResponse<SupplierResponse>> search(SupplierQuery query) {
         return ApiResponse.ok(supplierService.search(query));
     }
