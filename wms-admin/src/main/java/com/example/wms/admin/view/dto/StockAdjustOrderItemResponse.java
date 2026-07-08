@@ -1,7 +1,9 @@
 package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.StockAdjustOrderItem;
+import com.example.wms.common.enums.AdjustAction;
 import com.example.wms.common.enums.AdjustType;
+import com.example.wms.common.enums.HoldStatus;
 
 public record StockAdjustOrderItemResponse(
         Long id,
@@ -15,7 +17,16 @@ public record StockAdjustOrderItemResponse(
         Long locationId,
         String locationCode,
         AdjustType adjustType,
+        AdjustAction adjustAction,
         int adjustQty,
+        Long targetWarehouseId,
+        Long targetAreaId,
+        String targetAreaCode,
+        Long targetLocationId,
+        String targetLocationCode,
+        Long targetInventoryId,
+        int holdQty,
+        HoldStatus holdStatus,
         Integer beforeOnHandQty,
         Integer afterOnHandQty,
         Integer beforeLockedQty,
@@ -40,7 +51,16 @@ public record StockAdjustOrderItemResponse(
                 item.getLocation().getId(),
                 item.getLocation().getLocationCode(),
                 item.getAdjustType(),
+                item.getAdjustAction(),
                 item.getAdjustQty(),
+                item.getTargetWarehouseId(),
+                item.getTargetAreaId(),
+                item.getTargetArea() != null ? item.getTargetArea().getAreaCode() : null,
+                item.getTargetLocationId(),
+                item.getTargetLocation() != null ? item.getTargetLocation().getLocationCode() : null,
+                item.getTargetInventoryId(),
+                item.getHoldQty(),
+                item.getHoldStatus(),
                 item.getBeforeOnHandQty(),
                 item.getAfterOnHandQty(),
                 item.getBeforeLockedQty(),

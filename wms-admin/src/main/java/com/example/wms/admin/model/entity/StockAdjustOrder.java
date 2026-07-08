@@ -3,6 +3,7 @@ package com.example.wms.admin.model.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.example.wms.common.enums.AdjustAction;
 import com.example.wms.common.enums.AdjustReasonType;
 import com.example.wms.common.enums.AdjustType;
 import com.example.wms.common.enums.StockAdjustOrderStatus;
@@ -60,8 +61,17 @@ public class StockAdjustOrder {
         this.updatedAt = Instant.now();
     }
 
-    public void addItem(Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location, AdjustType adjustType, int adjustQty, String remark) {
-        this.items.add(new StockAdjustOrderItem(this, inventoryId, sku, area, location, adjustType, adjustQty, remark));
+    public void addItem(Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location,
+            AdjustType adjustType, AdjustAction adjustAction, int adjustQty, String remark) {
+        this.items.add(new StockAdjustOrderItem(this, inventoryId, sku, area, location, adjustType, adjustAction, adjustQty, remark));
+    }
+
+    /** Transfer/restore item: also anchors the destination area/location resolved at create time. */
+    public void addTransferItem(Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location,
+            AdjustAction adjustAction, int adjustQty, String remark,
+            Long targetWarehouseId, WarehouseArea targetArea, WarehouseLocation targetLocation) {
+        this.items.add(new StockAdjustOrderItem(this, inventoryId, sku, area, location,
+                AdjustType.DECREASE, adjustAction, adjustQty, remark, targetWarehouseId, targetArea, targetLocation));
     }
 
     public void attachWarehouse(Warehouse warehouse) {

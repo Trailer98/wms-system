@@ -1,6 +1,7 @@
 package com.example.wms.admin.view.dto;
 
 import com.example.wms.admin.model.entity.Inventory;
+import com.example.wms.common.enums.AreaType;
 import com.example.wms.common.enums.InventoryStatus;
 
 import java.time.Instant;
@@ -16,6 +17,7 @@ public record InventoryResponse(
         Long areaId,
         String areaCode,
         String areaName,
+        AreaType areaType,
         Long locationId,
         String locationCode,
         String locationName,
@@ -39,6 +41,7 @@ public record InventoryResponse(
                 inventory.getArea() != null ? inventory.getArea().getId() : null,
                 inventory.getArea() != null ? inventory.getArea().getAreaCode() : null,
                 inventory.getArea() != null ? inventory.getArea().getAreaName() : null,
+                inventory.getArea() != null ? inventory.getArea().getAreaType() : null,
                 inventory.getLocation() != null ? inventory.getLocation().getId() : null,
                 inventory.getLocation() != null ? inventory.getLocation().getLocationCode() : null,
                 inventory.getLocation() != null ? inventory.getLocation().getLocationName() : null,

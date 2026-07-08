@@ -109,7 +109,12 @@ public class DataInitializer implements ApplicationRunner {
             new PermissionSeed("supplier:create", "新增供应商", PermissionType.BUTTON, 151),
             new PermissionSeed("supplier:update", "编辑供应商", PermissionType.BUTTON, 152),
             new PermissionSeed("supplier:disable", "停用供应商", PermissionType.BUTTON, 153),
-            new PermissionSeed("operation-log:view", "操作日志查看", PermissionType.MENU, 160)
+            new PermissionSeed("operation-log:view", "操作日志查看", PermissionType.MENU, 160),
+            new PermissionSeed("sys-dict:view", "数据字典查看", PermissionType.MENU, 170),
+            new PermissionSeed("sys-dict:create", "新增字典", PermissionType.BUTTON, 171),
+            new PermissionSeed("sys-dict:update", "编辑字典", PermissionType.BUTTON, 172),
+            new PermissionSeed("sys-dict:disable", "启停字典", PermissionType.BUTTON, 173),
+            new PermissionSeed("sys-dict:delete", "删除字典项", PermissionType.BUTTON, 174)
     );
 
     private final SysPermissionMapper sysPermissionMapper;
@@ -148,6 +153,17 @@ public class DataInitializer implements ApplicationRunner {
             "operation-log:view"
     );
 
+    // sys-dict:view is granted to every seeded role (including WAREHOUSE_OPERATOR, which otherwise
+    // gets none of the other sys-dict codes): this RBAC model has no "authenticated but no specific
+    // permission" tier, and every role that can see a stock-movement list needs to resolve its
+    // operationType/bizType labels through /sys-dicts/batch, so view access has to be universal.
+    // Write access (create/update/disable/delete) stays admin-only except WAREHOUSE_MANAGER, which
+    // per product decision gets view only, not management.
+    private static final Set<String> NEW_SYS_DICT_ADMIN_CODES = Set.of(
+            "sys-dict:view", "sys-dict:create", "sys-dict:update", "sys-dict:disable", "sys-dict:delete"
+    );
+    private static final Set<String> NEW_SYS_DICT_VIEW_ONLY_CODES = Set.of("sys-dict:view");
+
     private static final Set<String> NEW_WAREHOUSE_OPERATOR_CODES = Set.of(
             "stock-adjust:view", "stock-adjust:create", "stock-adjust:update", "stock-adjust:submit",
             "stock-count:view", "stock-count:create", "stock-count:start", "stock-count:record",
@@ -173,6 +189,11 @@ public class DataInitializer implements ApplicationRunner {
         ensureGranted(roles.get("WAREHOUSE_MANAGER"), NEW_ADJUST_AND_COUNT_CODES, permissions);
         ensureGranted(roles.get("WAREHOUSE_OPERATOR"), NEW_WAREHOUSE_OPERATOR_CODES, permissions);
         ensureGranted(roles.get("INVENTORY_VIEWER"), NEW_INVENTORY_VIEWER_CODES, permissions);
+
+        ensureGranted(roles.get("ADMIN"), NEW_SYS_DICT_ADMIN_CODES, permissions);
+        ensureGranted(roles.get("WAREHOUSE_MANAGER"), NEW_SYS_DICT_VIEW_ONLY_CODES, permissions);
+        ensureGranted(roles.get("WAREHOUSE_OPERATOR"), NEW_SYS_DICT_VIEW_ONLY_CODES, permissions);
+        ensureGranted(roles.get("INVENTORY_VIEWER"), NEW_SYS_DICT_VIEW_ONLY_CODES, permissions);
     }
 
     private void ensureGranted(SysRole role, Collection<String> codes, Map<String, SysPermission> permissions) {
@@ -240,6 +261,8 @@ public class DataInitializer implements ApplicationRunner {
         return PERMISSION_SEEDS.stream()
                 .map(PermissionSeed::code)
                 .filter(code -> !code.startsWith("user:") && !code.startsWith("role:") && !code.startsWith("permission:"))
+                // WAREHOUSE_MANAGER gets sys-dict:view like every other role, but not the management codes.
+                .filter(code -> !code.startsWith("sys-dict:") || code.equals("sys-dict:view"))
                 .collect(Collectors.toCollection(LinkedHashSet::new));
     }
 
@@ -252,7 +275,8 @@ public class DataInitializer implements ApplicationRunner {
                 "exception:view",
                 "stock-adjust:view", "stock-adjust:create", "stock-adjust:update", "stock-adjust:submit",
                 "stock-count:view", "stock-count:create", "stock-count:start", "stock-count:record",
-                "customer:view", "supplier:view"
+                "customer:view", "supplier:view",
+                "sys-dict:view"
         );
     }
 
@@ -263,7 +287,8 @@ public class DataInitializer implements ApplicationRunner {
                 "inventory:view", "inventory:transaction:view",
                 "exception:view",
                 "stock-adjust:view", "stock-count:view",
-                "customer:view", "supplier:view"
+                "customer:view", "supplier:view",
+                "sys-dict:view"
         );
     }
 

@@ -25,15 +25,18 @@ import com.example.wms.admin.view.dto.StockCountItemActualRequest;
 import com.example.wms.admin.view.dto.StockCountTaskResponse;
 import com.example.wms.admin.view.dto.StockMovementQuery;
 import com.example.wms.admin.view.dto.StockMovementResponse;
+import com.example.wms.admin.view.dto.UpdateStatusRequest;
 import com.example.wms.admin.view.dto.UpdateStockCountItemsRequest;
 import com.example.wms.admin.view.dto.WarehouseAreaResponse;
 import com.example.wms.admin.view.dto.WarehouseLocationResponse;
 import com.example.wms.admin.view.dto.WarehouseResponse;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.common.common.PageResponse;
+import com.example.wms.common.enums.AdjustAction;
 import com.example.wms.common.enums.AdjustReasonType;
 import com.example.wms.common.enums.AreaType;
 import com.example.wms.common.enums.AdjustType;
+import com.example.wms.common.enums.HoldStatus;
 import com.example.wms.common.enums.LocationStatus;
 import com.example.wms.common.enums.LocationType;
 import com.example.wms.common.enums.MovementType;
@@ -77,6 +80,8 @@ class StockAdjustAndCountFlowTest {
     private Long warehouseId;
     private Long areaId;
     private Long locationId;
+    private Long exceptionAreaId;
+    private Long exceptionLocationId;
     private Long skuId;
 
     @BeforeEach
@@ -94,6 +99,12 @@ class StockAdjustAndCountFlowTest {
 
         WarehouseLocationResponse location = warehouseLocationService.create(new CreateWarehouseLocationRequest(warehouseId, areaId, "A-01-" + suffix, "A-01", LocationType.NORMAL, 1000, true, 1, null));
         locationId = location.id();
+
+        WarehouseAreaResponse exceptionArea = warehouseAreaService.create(new CreateWarehouseAreaRequest(warehouseId, "EXC-" + suffix, "异常区", AreaType.EXCEPTION, 10, null));
+        exceptionAreaId = exceptionArea.id();
+
+        WarehouseLocationResponse exceptionLocation = warehouseLocationService.create(new CreateWarehouseLocationRequest(warehouseId, exceptionAreaId, "E-01-" + suffix, "E-01", LocationType.NORMAL, 1000, true, 1, null));
+        exceptionLocationId = exceptionLocation.id();
     }
 
     private void receiveInto(int quantity) {
@@ -139,6 +150,220 @@ class StockAdjustAndCountFlowTest {
                 List.of(new StockAdjustOrderItemRequest(null, skuId, areaId, locationId, adjustType, qty, allowCreateInventory, remark))
         );
         return stockAdjustOrderService.create(request);
+    }
+
+    private InventoryResponse fetchInventoryAt(Long locationId) {
+        InventoryQuery query = new InventoryQuery();
+        query.setLocationId(locationId);
+        PageResponse<InventoryResponse> page = inventoryService.search(query);
+        assertEquals(1, page.records().size());
+        return page.records().get(0);
+    }
+
+    private StockAdjustOrderResponse createTransferAdjustOrder(Long inventoryId, AdjustAction action, Long targetAreaId, Long targetLocationId,
+            int qty, AdjustReasonType reasonType, String remark) {
+        String adjustNo = "ADJ-" + suffix + "-" + System.nanoTime();
+        CreateStockAdjustOrderRequest request = new CreateStockAdjustOrderRequest(
+                adjustNo, warehouseId, reasonType, "transfer test",
+                List.of(new StockAdjustOrderItemRequest(inventoryId, null, null, null, AdjustType.DECREASE, action, qty, false,
+                        warehouseId, targetAreaId, targetLocationId, remark))
+        );
+        return stockAdjustOrderService.create(request);
+    }
+
+    @Test
+    void transferToExceptionSucceedsAndKeepsTotalOnHand() {
+        receiveInto(100);
+        Long sourceInventoryId = fetchInventory().id();
+
+        StockAdjustOrderResponse created = createTransferAdjustOrder(sourceInventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 30, AdjustReasonType.DAMAGE, "damaged in handling");
+        assertEquals(AdjustAction.TRANSFER_TO_EXCEPTION, created.items().get(0).adjustAction());
+        stockAdjustOrderService.submit(created.id());
+        StockAdjustOrderResponse confirmed = stockAdjustOrderService.confirm(created.id());
+
+        assertEquals(StockAdjustOrderStatus.COMPLETED, confirmed.status());
+        assertEquals(HoldStatus.CONSUMED, confirmed.items().get(0).holdStatus());
+
+        InventoryResponse sourceAfter = fetchInventory();
+        InventoryResponse targetAfter = fetchInventoryAt(exceptionLocationId);
+
+        assertEquals(70, sourceAfter.quantity());
+        assertEquals(0, sourceAfter.frozenQuantity());
+        assertEquals(70, sourceAfter.availableQuantity());
+
+        assertEquals(30, targetAfter.quantity());
+        assertEquals(30, targetAfter.frozenQuantity());
+        assertEquals(0, targetAfter.availableQuantity());
+
+        assertEquals(100, sourceAfter.quantity() + targetAfter.quantity(), "total on-hand across both rows must be unchanged");
+        assertEquals(sourceInventoryId, confirmed.items().get(0).inventoryId());
+        assertEquals(targetAfter.id(), confirmed.items().get(0).targetInventoryId());
+
+        StockMovementResponse out = findMovement(confirmed.adjustNo(), OperationType.TRANSFER_TO_EXCEPTION_OUT);
+        assertEquals(100, out.beforeQuantity());
+        assertEquals(70, out.afterQuantity());
+        StockMovementResponse in = findMovement(confirmed.adjustNo(), OperationType.TRANSFER_TO_EXCEPTION_IN);
+        assertEquals(0, in.beforeQuantity());
+        assertEquals(30, in.afterQuantity());
+    }
+
+    @Test
+    void restoreFromExceptionSucceedsAndKeepsTotalOnHand() {
+        receiveInto(100);
+        Long sourceInventoryId = fetchInventory().id();
+        StockAdjustOrderResponse transfer = createTransferAdjustOrder(sourceInventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 40, AdjustReasonType.QUALITY_ISSUE, "failed QC");
+        stockAdjustOrderService.submit(transfer.id());
+        stockAdjustOrderService.confirm(transfer.id());
+
+        Long exceptionInventoryId = fetchInventoryAt(exceptionLocationId).id();
+        StockAdjustOrderResponse restore = createTransferAdjustOrder(exceptionInventoryId, AdjustAction.RESTORE_FROM_EXCEPTION,
+                areaId, locationId, 25, AdjustReasonType.OTHER, "rework passed recheck");
+        assertEquals(AdjustAction.RESTORE_FROM_EXCEPTION, restore.items().get(0).adjustAction());
+        stockAdjustOrderService.submit(restore.id());
+        StockAdjustOrderResponse confirmed = stockAdjustOrderService.confirm(restore.id());
+
+        assertEquals(StockAdjustOrderStatus.COMPLETED, confirmed.status());
+
+        InventoryResponse exceptionAfter = fetchInventoryAt(exceptionLocationId);
+        InventoryResponse normalAfter = fetchInventory();
+
+        assertEquals(15, exceptionAfter.quantity());
+        assertEquals(15, exceptionAfter.frozenQuantity());
+        assertEquals(0, exceptionAfter.availableQuantity());
+
+        assertEquals(85, normalAfter.quantity());
+        assertEquals(0, normalAfter.frozenQuantity());
+        assertEquals(85, normalAfter.availableQuantity());
+
+        assertEquals(100, exceptionAfter.quantity() + normalAfter.quantity(), "total on-hand across both rows must be unchanged");
+
+        StockMovementResponse out = findMovement(confirmed.adjustNo(), OperationType.RESTORE_FROM_EXCEPTION_OUT);
+        assertEquals(40, out.beforeQuantity());
+        assertEquals(15, out.afterQuantity());
+        StockMovementResponse in = findMovement(confirmed.adjustNo(), OperationType.RESTORE_FROM_EXCEPTION_IN);
+        assertEquals(60, in.beforeQuantity());
+        assertEquals(85, in.afterQuantity());
+    }
+
+    @Test
+    void damageReasonRejectsPlainQuantityDecrease() {
+        receiveInto(50);
+        Long inventoryId = fetchInventory().id();
+        String adjustNo = "ADJ-" + suffix + "-" + System.nanoTime();
+        CreateStockAdjustOrderRequest request = new CreateStockAdjustOrderRequest(
+                adjustNo, warehouseId, AdjustReasonType.DAMAGE, "damaged stock",
+                List.of(new StockAdjustOrderItemRequest(inventoryId, null, null, null, AdjustType.DECREASE, AdjustAction.QUANTITY_DECREASE, 10, false,
+                        null, null, null, "should be rejected"))
+        );
+        assertThrows(BusinessException.class, () -> stockAdjustOrderService.create(request));
+        assertEquals(50, fetchInventory().quantity());
+    }
+
+    @Test
+    void qualityIssueReasonRejectsPlainQuantityDecreaseEvenWithoutExplicitAction() {
+        receiveInto(50);
+        Long inventoryId = fetchInventory().id();
+        assertThrows(BusinessException.class, () -> createAdjustOrderFromInventoryWithReason(inventoryId, AdjustReasonType.QUALITY_ISSUE, 10));
+        assertEquals(50, fetchInventory().quantity());
+    }
+
+    private StockAdjustOrderResponse createAdjustOrderFromInventoryWithReason(Long inventoryId, AdjustReasonType reasonType, int qty) {
+        String adjustNo = "ADJ-" + suffix + "-" + System.nanoTime();
+        CreateStockAdjustOrderRequest request = new CreateStockAdjustOrderRequest(
+                adjustNo, warehouseId, reasonType, "reason mapping test",
+                List.of(new StockAdjustOrderItemRequest(inventoryId, null, null, null, AdjustType.DECREASE, qty, false, "remark"))
+        );
+        return stockAdjustOrderService.create(request);
+    }
+
+    @Test
+    void transferToExceptionTargetNotExceptionAreaFails() {
+        receiveInto(50);
+        Long inventoryId = fetchInventory().id();
+        assertThrows(BusinessException.class, () -> createTransferAdjustOrder(inventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                areaId, locationId, 10, AdjustReasonType.DAMAGE, "wrong target area type"));
+        assertEquals(50, fetchInventory().quantity());
+    }
+
+    @Test
+    void restoreFromExceptionTargetStillExceptionFails() {
+        receiveInto(50);
+        Long sourceInventoryId = fetchInventory().id();
+        StockAdjustOrderResponse transfer = createTransferAdjustOrder(sourceInventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 20, AdjustReasonType.DAMAGE, "into exception");
+        stockAdjustOrderService.submit(transfer.id());
+        stockAdjustOrderService.confirm(transfer.id());
+
+        Long exceptionInventoryId = fetchInventoryAt(exceptionLocationId).id();
+        assertThrows(BusinessException.class, () -> createTransferAdjustOrder(exceptionInventoryId, AdjustAction.RESTORE_FROM_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 5, AdjustReasonType.OTHER, "target still exception"));
+    }
+
+    @Test
+    void transferToExceptionQuantityExceedsAvailableFails() {
+        receiveInto(20);
+        Long inventoryId = fetchInventory().id();
+        assertThrows(BusinessException.class, () -> createTransferAdjustOrder(inventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 50, AdjustReasonType.DAMAGE, "over-transfer"));
+        assertEquals(20, fetchInventory().quantity());
+    }
+
+    @Test
+    void restoreFromExceptionQuantityExceedsOnHandFails() {
+        receiveInto(50);
+        Long sourceInventoryId = fetchInventory().id();
+        StockAdjustOrderResponse transfer = createTransferAdjustOrder(sourceInventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 20, AdjustReasonType.DAMAGE, "into exception");
+        stockAdjustOrderService.submit(transfer.id());
+        stockAdjustOrderService.confirm(transfer.id());
+
+        Long exceptionInventoryId = fetchInventoryAt(exceptionLocationId).id();
+        assertThrows(BusinessException.class, () -> createTransferAdjustOrder(exceptionInventoryId, AdjustAction.RESTORE_FROM_EXCEPTION,
+                areaId, locationId, 50, AdjustReasonType.OTHER, "over-restore"));
+        assertEquals(20, fetchInventoryAt(exceptionLocationId).quantity());
+    }
+
+    @Test
+    void transferToExceptionTargetLocationCountingFails() {
+        receiveInto(50);
+        Long inventoryId = fetchInventory().id();
+        warehouseLocationService.updateStatus(exceptionLocationId, new UpdateStatusRequest(LocationStatus.COUNTING.name()));
+        assertThrows(BusinessException.class, () -> createTransferAdjustOrder(inventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 10, AdjustReasonType.DAMAGE, "target counting"));
+        assertEquals(50, fetchInventory().quantity());
+    }
+
+    @Test
+    void cancelSubmittedTransferReleasesHoldWithoutMovementOrInventoryChange() {
+        receiveInto(100);
+        Long inventoryId = fetchInventory().id();
+        StockAdjustOrderResponse created = createTransferAdjustOrder(inventoryId, AdjustAction.TRANSFER_TO_EXCEPTION,
+                exceptionAreaId, exceptionLocationId, 30, AdjustReasonType.DAMAGE, "will be cancelled");
+        stockAdjustOrderService.submit(created.id());
+
+        InventoryResponse afterSubmit = fetchInventory();
+        assertEquals(100, afterSubmit.quantity());
+        assertEquals(30, afterSubmit.frozenQuantity());
+        assertEquals(70, afterSubmit.availableQuantity());
+
+        StockAdjustOrderResponse cancelled = stockAdjustOrderService.cancel(created.id(), "changed my mind");
+        assertEquals(StockAdjustOrderStatus.CANCELLED, cancelled.status());
+        assertEquals(HoldStatus.RELEASED, cancelled.items().get(0).holdStatus());
+
+        InventoryResponse afterCancel = fetchInventory();
+        assertEquals(100, afterCancel.quantity());
+        assertEquals(0, afterCancel.frozenQuantity());
+        assertEquals(100, afterCancel.availableQuantity());
+
+        StockMovementQuery query = new StockMovementQuery();
+        query.setBusinessNo(created.adjustNo());
+        PageResponse<StockMovementResponse> movements = inventoryService.searchTransactions(query);
+        assertTrue(movements.records().stream().noneMatch(m -> m.operationType() == OperationType.TRANSFER_TO_EXCEPTION_OUT
+                || m.operationType() == OperationType.TRANSFER_TO_EXCEPTION_IN), "cancelling before confirm must never write a transfer movement");
+        assertTrue(movements.records().stream().anyMatch(m -> m.operationType() == OperationType.STOCK_FREEZE));
+        assertTrue(movements.records().stream().anyMatch(m -> m.operationType() == OperationType.STOCK_UNFREEZE));
     }
 
     @Test

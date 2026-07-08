@@ -468,7 +468,9 @@ UPDATE stock_movements SET operation_type = 'OUTBOUND_CANCEL_UNLOCK' WHERE opera
 UPDATE stock_movements SET operation_type = 'UNKNOWN' WHERE operation_type NOT IN (
     'INBOUND_RECEIVE', 'OUTBOUND_LOCK', 'OUTBOUND_CANCEL_UNLOCK', 'OUTBOUND_SHIP',
     'STOCK_ADJUST_INCREASE', 'STOCK_ADJUST_DECREASE', 'STOCK_COUNT_PROFIT', 'STOCK_COUNT_LOSS',
-    'STOCK_FREEZE', 'STOCK_UNFREEZE', 'TRANSFER_OUT', 'TRANSFER_IN', 'UNKNOWN'
+    'STOCK_FREEZE', 'STOCK_UNFREEZE', 'TRANSFER_OUT', 'TRANSFER_IN',
+    'TRANSFER_TO_EXCEPTION_OUT', 'TRANSFER_TO_EXCEPTION_IN', 'RESTORE_FROM_EXCEPTION_OUT', 'RESTORE_FROM_EXCEPTION_IN',
+    'UNKNOWN'
 );
 
 -- stock_movements never had any indexes despite being filtered/sorted on all of these; add them now.
@@ -631,4 +633,108 @@ create table if not exists biz_sequence (
     updated_at timestamp not null,
     primary key (id),
     constraint uk_biz_sequence_type_date unique (biz_type, seq_date)
+);
+
+-- Normal-area <-> exception-area inventory transfer, modeled as a new stock_adjust_order_item
+-- "action" instead of a separate module. adjust_action is nullable purely to tolerate rows written
+-- before this column existed; the backfill UPDATE below immediately normalizes every such row (and
+-- is itself idempotent: after the first run no row still has adjust_action IS NULL), so in practice
+-- the column is always populated by the time any application code reads it.
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'adjust_action') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN adjust_action VARCHAR(32) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+UPDATE stock_adjust_order_item SET adjust_action = 'QUANTITY_INCREASE' WHERE adjust_action IS NULL AND adjust_type = 'INCREASE';
+UPDATE stock_adjust_order_item SET adjust_action = 'QUANTITY_DECREASE' WHERE adjust_action IS NULL AND adjust_type = 'DECREASE';
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'target_warehouse_id') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN target_warehouse_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'target_area_id') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN target_area_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'target_location_id') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN target_location_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'target_inventory_id') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN target_inventory_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'hold_qty') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN hold_qty INTEGER NOT NULL DEFAULT 0', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND column_name = 'hold_status') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD COLUMN hold_status VARCHAR(32) NOT NULL DEFAULT ''NONE''', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND index_name = 'idx_stock_adjust_item_target_location') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD INDEX idx_stock_adjust_item_target_location (target_location_id)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'stock_adjust_order_item' AND index_name = 'idx_stock_adjust_item_target_inventory') = 0,
+    'ALTER TABLE stock_adjust_order_item ADD INDEX idx_stock_adjust_item_target_inventory (target_inventory_id)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+-- Data dictionary: business-facing codes (operationType, bizType, ...) keep living as Java enums for
+-- logic; this is purely the display layer (label/sort/tag color/enabled) so it can be edited by an
+-- admin without a redeploy. New tables, no historical-data risk. Seed rows are inserted idempotently
+-- by DictDataInitializer on startup, not here, matching how sys_permission/sys_role are seeded.
+create table if not exists sys_dict_type (
+    id bigint not null,
+    dict_code varchar(64) not null,
+    dict_name varchar(128) not null,
+    status varchar(32) not null default 'ENABLED',
+    remark varchar(255),
+    sort_order int not null default 0,
+    created_by varchar(64),
+    created_at timestamp not null,
+    updated_by varchar(64),
+    updated_at timestamp not null,
+    primary key (id),
+    constraint uk_sys_dict_type_code unique (dict_code)
+);
+
+create table if not exists sys_dict_item (
+    id bigint not null,
+    dict_code varchar(64) not null,
+    item_value varchar(128) not null,
+    item_label varchar(128) not null,
+    item_label_en varchar(128),
+    sort_order int not null default 0,
+    status varchar(32) not null default 'ENABLED',
+    tag_type varchar(32),
+    css_class varchar(128),
+    is_system tinyint(1) not null default 0,
+    remark varchar(255),
+    created_by varchar(64),
+    created_at timestamp not null,
+    updated_by varchar(64),
+    updated_at timestamp not null,
+    deleted tinyint(1) not null default 0,
+    primary key (id),
+    constraint uk_sys_dict_item_code_value unique (dict_code, item_value),
+    index idx_sys_dict_item_dict_code (dict_code),
+    index idx_sys_dict_item_status (status)
 );

@@ -3,7 +3,9 @@ package com.example.wms.admin.model.entity;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.example.wms.common.enums.AdjustAction;
 import com.example.wms.common.enums.AdjustType;
+import com.example.wms.common.enums.HoldStatus;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -23,7 +25,14 @@ public class StockAdjustOrderItem {
     private Long areaId;
     private Long locationId;
     private AdjustType adjustType;
+    private AdjustAction adjustAction;
     private int adjustQty;
+    private Long targetWarehouseId;
+    private Long targetAreaId;
+    private Long targetLocationId;
+    private Long targetInventoryId;
+    private int holdQty;
+    private HoldStatus holdStatus = HoldStatus.NONE;
     private Integer beforeOnHandQty;
     private Integer afterOnHandQty;
     private Integer beforeLockedQty;
@@ -47,7 +56,22 @@ public class StockAdjustOrderItem {
     @TableField(exist = false)
     private WarehouseLocation location;
 
-    public StockAdjustOrderItem(StockAdjustOrder order, Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location, AdjustType adjustType, int adjustQty, String remark) {
+    @TableField(exist = false)
+    private WarehouseArea targetArea;
+
+    @TableField(exist = false)
+    private WarehouseLocation targetLocation;
+
+    /** Plain quantity adjustment (increase/decrease); no transfer target. */
+    public StockAdjustOrderItem(StockAdjustOrder order, Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location,
+            AdjustType adjustType, AdjustAction adjustAction, int adjustQty, String remark) {
+        this(order, inventoryId, sku, area, location, adjustType, adjustAction, adjustQty, remark, null, null, null);
+    }
+
+    /** Transfer between normal and exception areas; target* is the destination side, resolved at create time. */
+    public StockAdjustOrderItem(StockAdjustOrder order, Long inventoryId, Sku sku, WarehouseArea area, WarehouseLocation location,
+            AdjustType adjustType, AdjustAction adjustAction, int adjustQty, String remark,
+            Long targetWarehouseId, WarehouseArea targetArea, WarehouseLocation targetLocation) {
         this.adjustOrderId = order.getId();
         this.inventoryId = inventoryId;
         this.sku = sku;
@@ -58,8 +82,16 @@ public class StockAdjustOrderItem {
         this.location = location;
         this.locationId = location.getId();
         this.adjustType = adjustType;
+        this.adjustAction = adjustAction;
         this.adjustQty = adjustQty;
         this.remark = remark;
+        this.targetWarehouseId = targetWarehouseId;
+        this.targetArea = targetArea;
+        this.targetAreaId = targetArea != null ? targetArea.getId() : null;
+        this.targetLocation = targetLocation;
+        this.targetLocationId = targetLocation != null ? targetLocation.getId() : null;
+        this.holdQty = 0;
+        this.holdStatus = HoldStatus.NONE;
         Instant now = Instant.now();
         this.createdAt = now;
         this.updatedAt = now;
@@ -71,6 +103,10 @@ public class StockAdjustOrderItem {
 
     public void assignInventoryId(Long inventoryId) {
         this.inventoryId = inventoryId;
+    }
+
+    public void assignTargetInventoryId(Long targetInventoryId) {
+        this.targetInventoryId = targetInventoryId;
     }
 
     public void attachSku(Sku sku) {
@@ -86,6 +122,35 @@ public class StockAdjustOrderItem {
     public void attachLocation(WarehouseLocation location) {
         this.location = location;
         this.locationId = location.getId();
+    }
+
+    public void attachTargetArea(WarehouseArea targetArea) {
+        this.targetArea = targetArea;
+        this.targetAreaId = targetArea.getId();
+    }
+
+    public void attachTargetLocation(WarehouseLocation targetLocation) {
+        this.targetLocation = targetLocation;
+        this.targetLocationId = targetLocation.getId();
+    }
+
+    /** Submit-time freeze for a pending transfer-to-exception. */
+    public void markHeld(int qty) {
+        this.holdQty = qty;
+        this.holdStatus = HoldStatus.HELD;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Cancel of a submitted-but-not-confirmed transfer releases its hold. */
+    public void markReleased() {
+        this.holdStatus = HoldStatus.RELEASED;
+        this.updatedAt = Instant.now();
+    }
+
+    /** Confirm consumes the hold (or, for restore, simply marks the transfer done). */
+    public void markConsumed() {
+        this.holdStatus = HoldStatus.CONSUMED;
+        this.updatedAt = Instant.now();
     }
 
     public void recordMovement(StockMovement movement) {

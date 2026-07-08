@@ -49,6 +49,7 @@ public class InventoryService {
     private final WarehouseAreaService warehouseAreaService;
     private final WarehouseLocationService warehouseLocationService;
     private final WmsExceptionEventService wmsExceptionEventService;
+    private final SysDictService sysDictService;
 
     public InventoryService(
             InventoryMapper inventoryMapper,
@@ -60,7 +61,8 @@ public class InventoryService {
             SkuService skuService,
             WarehouseAreaService warehouseAreaService,
             WarehouseLocationService warehouseLocationService,
-            WmsExceptionEventService wmsExceptionEventService
+            WmsExceptionEventService wmsExceptionEventService,
+            SysDictService sysDictService
     ) {
         this.inventoryMapper = inventoryMapper;
         this.stockMovementMapper = stockMovementMapper;
@@ -72,6 +74,7 @@ public class InventoryService {
         this.warehouseAreaService = warehouseAreaService;
         this.warehouseLocationService = warehouseLocationService;
         this.wmsExceptionEventService = wmsExceptionEventService;
+        this.sysDictService = sysDictService;
     }
 
     @Transactional(readOnly = true)
@@ -128,7 +131,7 @@ public class InventoryService {
                         .orderByDesc(StockMovement::getOccurredAt)
         );
 
-        return PageResponse.from(page, movement -> StockMovementResponse.from(assembleMovement(movement)));
+        return PageResponse.from(page, movement -> StockMovementResponse.from(assembleMovement(movement), sysDictService));
     }
 
     @Transactional
@@ -232,6 +235,81 @@ public class InventoryService {
                 -qty, before, after,
                 businessNo, remark
         );
+        stockMovementMapper.insert(movement);
+        return movement;
+    }
+
+    /**
+     * Guarded hold: bumps frozen_quantity by qty only if that much is currently available, so it
+     * stops counting toward available/allocatable stock without changing on-hand. Used by
+     * stock-adjust-order's submit step for a pending transfer-to-exception item, so the amount can't
+     * be locked away by an outbound order between submit and confirm.
+     */
+    @Transactional
+    public StockMovement hold(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku,
+            Long inventoryId, int qty, String businessNo, String remark) {
+        Inventory inventory = inventoryMapper.selectByIdForUpdate(inventoryId);
+        if (inventory == null) {
+            throw new BusinessException("inventory not found for hold: " + inventoryId);
+        }
+        InventorySnapshot before = inventory.snapshot();
+        int affected = inventoryMapper.tryFreeze(inventoryId, qty);
+        if (affected == 0) {
+            throw new BusinessException("available quantity at location " + location.getLocationCode() + " is insufficient to hold " + qty);
+        }
+        InventorySnapshot after = new InventorySnapshot(before.onHandQty(), before.lockedQty(), before.frozenQty() + qty);
+        StockMovement movement = new StockMovement(MovementType.ADJUSTMENT, OperationType.STOCK_FREEZE, warehouse, area, location, sku,
+                0, before, after, businessNo, remark);
+        stockMovementMapper.insert(movement);
+        return movement;
+    }
+
+    /** Counterpart to {@link #hold}, used when a submitted transfer-to-exception item is cancelled before confirm. */
+    @Transactional
+    public StockMovement releaseHold(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku,
+            Long inventoryId, int qty, String businessNo, String remark) {
+        Inventory inventory = inventoryMapper.selectByIdForUpdate(inventoryId);
+        if (inventory == null) {
+            throw new BusinessException("inventory not found for hold release: " + inventoryId);
+        }
+        InventorySnapshot before = inventory.snapshot();
+        int affected = inventoryMapper.releaseFreeze(inventoryId, qty);
+        if (affected == 0) {
+            throw new BusinessException("frozen quantity at location " + location.getLocationCode() + " is insufficient to release " + qty);
+        }
+        InventorySnapshot after = new InventorySnapshot(before.onHandQty(), before.lockedQty(), before.frozenQty() - qty);
+        StockMovement movement = new StockMovement(MovementType.ADJUSTMENT, OperationType.STOCK_UNFREEZE, warehouse, area, location, sku,
+                0, before, after, businessNo, remark);
+        stockMovementMapper.insert(movement);
+        return movement;
+    }
+
+    /**
+     * The "out" leg of an area-to-area transfer (normal-to-exception or exception-to-normal):
+     * decreases on-hand and frozen together, atomically, because the qty being moved was already
+     * frozen — either by an explicit {@link #hold} at submit time (transfer-to-exception), or by
+     * {@link #receive}'s automatic exception-area freeze at the time this stock first arrived
+     * (restore-from-exception). Pair with {@link #increaseOnHand} at the destination for the "in"
+     * leg — its own area-type check naturally freezes the arriving qty again if the destination is
+     * itself an exception area, and leaves it unfrozen (fully available) otherwise. Locks the source
+     * row itself (does not rely on the caller already holding it), so this is safe to call as the
+     * first inventory-touching step of a confirm.
+     */
+    @Transactional
+    public StockMovement decreaseFrozenOnHand(Warehouse warehouse, WarehouseArea area, WarehouseLocation location, Sku sku,
+            Long inventoryId, int qty, MovementType movementType, OperationType operationType, String businessNo, String remark) {
+        Inventory inventory = inventoryMapper.selectByIdForUpdate(inventoryId);
+        if (inventory == null) {
+            throw new BusinessException("inventory not found: " + inventoryId);
+        }
+        InventorySnapshot before = inventory.snapshot();
+        int affected = inventoryMapper.decreaseFrozenOnHand(inventoryId, qty);
+        if (affected == 0) {
+            throw new BusinessException("on-hand/frozen quantity at location " + location.getLocationCode() + " is insufficient to transfer out " + qty);
+        }
+        InventorySnapshot after = new InventorySnapshot(before.onHandQty() - qty, before.lockedQty(), before.frozenQty() - qty);
+        StockMovement movement = new StockMovement(movementType, operationType, warehouse, area, location, sku,
+                -qty, before, after, businessNo, remark);
         stockMovementMapper.insert(movement);
         return movement;
     }
