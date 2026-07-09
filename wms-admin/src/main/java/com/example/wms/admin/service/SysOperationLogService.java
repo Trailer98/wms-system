@@ -28,6 +28,7 @@ public class SysOperationLogService {
                         .like(StringUtils.hasText(query.getOperator()), SysOperationLog::getOperator, query.getOperator())
                         .like(StringUtils.hasText(query.getOperationType()), SysOperationLog::getOperationType, query.getOperationType())
                         .eq(StringUtils.hasText(query.getBizNo()), SysOperationLog::getBizNo, query.getBizNo())
+                        .eq(StringUtils.hasText(query.getBizType()), SysOperationLog::getBizType, query.getBizType())
                         .ge(query.getStartTime() != null, SysOperationLog::getCreateTime, query.getStartTime())
                         .le(query.getEndTime() != null, SysOperationLog::getCreateTime, query.getEndTime())
                         .orderByDesc(SysOperationLog::getCreateTime)

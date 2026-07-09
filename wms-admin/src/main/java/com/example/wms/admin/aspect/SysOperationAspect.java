@@ -50,7 +50,26 @@ public class SysOperationAspect {
             errorMessage = ex.getMessage();
             throw ex;
         } finally {
+            // Read here, after proceed() has returned/thrown, so the business method has already
+            // generated and saved its number; getAndClear() also wipes the ThreadLocal so it can
+            // never leak into a later request on this thread.
+            OperationLogContext.Holder context = OperationLogContext.getAndClear();
+
             String bizNo = resolveBizNo(joinPoint, result, operationLog.bizNo());
+            if (!StringUtils.hasText(bizNo) && StringUtils.hasText(context.getBizNo())) {
+                bizNo = context.getBizNo();
+            }
+
+            String bizType = operationLog.bizType();
+            if (!StringUtils.hasText(bizType) && StringUtils.hasText(context.getBizType())) {
+                bizType = context.getBizType();
+            }
+
+            Long bizId = resolveBizId(joinPoint, result, operationLog.bizId());
+            if (bizId == null) {
+                bizId = context.getBizId();
+            }
+
             try {
                 CurrentUser currentUser = CurrentUserContext.get();
                 sysOperationLogAsyncService.saveLog(
@@ -59,6 +78,8 @@ public class SysOperationAspect {
                         operationLog.operationType(),
                         operationLog.module(),
                         bizNo,
+                        bizType,
+                        bizId,
                         operationLog.content(),
                         getRequestUri(),
                         getRequestMethod(),
@@ -87,7 +108,31 @@ public class SysOperationAspect {
         return resolveOrderNoFromResult(result);
     }
 
+    private Long resolveBizId(ProceedingJoinPoint joinPoint, Object result, String bizIdExpression) {
+        if (StringUtils.hasText(bizIdExpression)) {
+            try {
+                Object value = parseExpressionRaw(joinPoint, result, bizIdExpression);
+                if (value instanceof Long longValue) {
+                    return longValue;
+                }
+                if (value instanceof Number number) {
+                    return number.longValue();
+                }
+            } catch (RuntimeException ex) {
+                log.warn("resolve operation log bizId failed, expression={}", bizIdExpression, ex);
+            }
+        }
+        Object data = invokeNoArgMethod(result, "data");
+        Object id = invokeNoArgMethod(data, "id");
+        return id instanceof Long longValue ? longValue : null;
+    }
+
     private String parseExpression(ProceedingJoinPoint joinPoint, Object result, String expression) {
+        Object value = parseExpressionRaw(joinPoint, result, expression);
+        return value == null ? "" : String.valueOf(value);
+    }
+
+    private Object parseExpressionRaw(ProceedingJoinPoint joinPoint, Object result, String expression) {
         MethodSignature signature = (MethodSignature) joinPoint.getSignature();
         Method method = signature.getMethod();
         Object[] args = joinPoint.getArgs();
@@ -101,8 +146,7 @@ public class SysOperationAspect {
             }
         }
 
-        Object value = expressionParser.parseExpression(expression).getValue(context);
-        return value == null ? "" : String.valueOf(value);
+        return expressionParser.parseExpression(expression).getValue(context);
     }
 
     private String resolveOrderNoFromResult(Object result) {

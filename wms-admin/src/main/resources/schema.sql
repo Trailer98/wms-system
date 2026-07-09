@@ -121,7 +121,9 @@ create table if not exists sys_operation_log (
     id bigint not null,
     operator varchar(64) not null,
     operation_type varchar(64) not null,
-    biz_no varchar(64),
+    biz_no varchar(128),
+    biz_type varchar(64),
+    biz_id bigint,
     content varchar(255),
     ip varchar(64),
     create_time timestamp not null,
@@ -455,6 +457,30 @@ DEALLOCATE PREPARE stmt;
 
 SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'error_message') = 0,
     'ALTER TABLE sys_operation_log ADD COLUMN error_message VARCHAR(500) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'biz_type') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN biz_type VARCHAR(64) NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND column_name = 'biz_id') = 0,
+    'ALTER TABLE sys_operation_log ADD COLUMN biz_id BIGINT NULL', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND index_name = 'idx_operation_log_biz_type_no') = 0,
+    'ALTER TABLE sys_operation_log ADD INDEX idx_operation_log_biz_type_no (biz_type, biz_no)', 'SELECT 1'));
+PREPARE stmt FROM @stmt;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+
+SET @stmt := (SELECT IF((SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sys_operation_log' AND index_name = 'idx_operation_log_biz_id') = 0,
+    'ALTER TABLE sys_operation_log ADD INDEX idx_operation_log_biz_id (biz_id)', 'SELECT 1'));
 PREPARE stmt FROM @stmt;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;

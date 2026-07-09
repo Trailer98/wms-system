@@ -35,7 +35,9 @@ public class InboundOrderController {
             operationType = "创建入库单",
             content = "创建入库单",
             module = "入库管理",
-            bizNo = "#request.orderNo()"
+            bizType = "INBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<InboundOrderResponse> create(@Valid @RequestBody CreateInboundOrderRequest request) {
         return ApiResponse.ok(inboundOrderService.create(request));
@@ -47,7 +49,9 @@ public class InboundOrderController {
             operationType = "编辑入库单",
             content = "编辑入库单",
             module = "入库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "INBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<InboundOrderResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateInboundOrderRequest request) {
         return ApiResponse.ok(inboundOrderService.update(id, request));
@@ -59,7 +63,9 @@ public class InboundOrderController {
             operationType = "入库单收货",
             content = "入库单收货",
             module = "入库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "INBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<InboundOrderResponse> receive(@PathVariable Long id) {
         return ApiResponse.ok(inboundOrderService.receive(id));

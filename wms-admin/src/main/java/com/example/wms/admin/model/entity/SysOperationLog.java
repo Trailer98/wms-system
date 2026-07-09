@@ -18,6 +18,8 @@ public class SysOperationLog {
     private String operationType;
     private String module;
     private String bizNo;
+    private String bizType;
+    private Long bizId;
     private String content;
     private String requestUri;
     private String requestMethod;
@@ -32,6 +34,8 @@ public class SysOperationLog {
             String operationType,
             String module,
             String bizNo,
+            String bizType,
+            Long bizId,
             String content,
             String requestUri,
             String requestMethod,
@@ -44,6 +48,8 @@ public class SysOperationLog {
         this.operationType = operationType;
         this.module = module;
         this.bizNo = bizNo;
+        this.bizType = bizType;
+        this.bizId = bizId;
         this.content = content;
         this.requestUri = requestUri;
         this.requestMethod = requestMethod;

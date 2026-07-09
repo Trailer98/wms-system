@@ -14,6 +14,7 @@ public class SysOperationLogQuery extends PageRequest {
     private String operator;
     private String operationType;
     private String bizNo;
+    private String bizType;
 
     @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
     private LocalDateTime startTime;

@@ -35,7 +35,9 @@ public class OutboundOrderController {
             operationType = "创建出库单",
             content = "创建出库单",
             module = "出库管理",
-            bizNo = "#request.orderNo()"
+            bizType = "OUTBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<OutboundOrderResponse> create(@Valid @RequestBody CreateOutboundOrderRequest request) {
         return ApiResponse.ok(outboundOrderService.create(request));
@@ -47,7 +49,9 @@ public class OutboundOrderController {
             operationType = "编辑出库单",
             content = "编辑出库单",
             module = "出库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "OUTBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<OutboundOrderResponse> update(@PathVariable Long id, @Valid @RequestBody UpdateOutboundOrderRequest request) {
         return ApiResponse.ok(outboundOrderService.update(id, request));
@@ -59,7 +63,9 @@ public class OutboundOrderController {
             operationType = "出库单锁库",
             content = "出库单锁库",
             module = "出库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "OUTBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<OutboundOrderResponse> lock(@PathVariable Long id) {
         return ApiResponse.ok(outboundOrderService.lock(id));
@@ -71,7 +77,9 @@ public class OutboundOrderController {
             operationType = "出库单发货",
             content = "出库单发货",
             module = "出库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "OUTBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<OutboundOrderResponse> ship(@PathVariable Long id) {
         return ApiResponse.ok(outboundOrderService.ship(id));
@@ -83,7 +91,9 @@ public class OutboundOrderController {
             operationType = "出库单取消",
             content = "出库单取消",
             module = "出库管理",
-            bizNo = "#result.data().orderNo()"
+            bizType = "OUTBOUND_ORDER",
+            bizNo = "#result.data().orderNo()",
+            bizId = "#result.data().id()"
     )
     public ApiResponse<OutboundOrderResponse> cancel(@PathVariable Long id) {
         return ApiResponse.ok(outboundOrderService.cancel(id));
