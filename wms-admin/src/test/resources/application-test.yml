@@ -1,0 +1,19 @@
+# test profile (test classpath only; not shipped in the app jar).
+#
+# Tests run against a DEDICATED test database (wms_system_test), never the default dev DB. Individual
+# test classes may still set their own spring.datasource.url via @SpringBootTest(properties=...); those
+# also point at wms_system_test, so isolation holds either way.
+#
+# baseline-on-migrate is explicitly false: the test DB is expected to be either empty (Flyway runs
+# V1/V2/V3 from scratch) or already Flyway-managed (history table present). It is never an existing,
+# non-baselined populated schema, so no auto-baseline is wanted here. See docs/database-migration.md
+# for how to create the test DB.
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3306/wms_system_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Tokyo&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: root123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    baseline-on-migrate: false

@@ -56,7 +56,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 // the all-or-nothing rollback behavior under test (case4) only actually happens on a real
 // transaction boundary, so nesting it inside one outer transaction would hide the rollback
 // (the same connection would still see its own uncommitted writes until the outer one ends).
-@SpringBootTest(properties = "spring.datasource.url=jdbc:mysql://localhost:3306/wms_system_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true")
+@SpringBootTest(properties = "spring.datasource.url=jdbc:mysql://localhost:3306/wms_system_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Tokyo&useSSL=false&allowPublicKeyRetrieval=true")
 class AreaLocationInventoryFlowTest {
 
     @Autowired

@@ -1,0 +1,30 @@
+app:
+  ai:
+    vector-datasource:
+      jdbc-url: jdbc:postgresql://localhost:5433/wms_ai
+      username: wms_ai
+      password: wms_ai_password
+      driver-class-name: org.postgresql.Driver
+      maximum-pool-size: 5
+
+    rag:
+      top-k: 3
+      similarity-threshold: 0.65
+
+spring:
+  ai:
+    model:
+      chat: deepseek
+      embedding: ollama
+
+    deepseek:
+      api-key: ${DEEPSEEK_API_KEY}
+      chat:
+        model: deepseek-v4-flash
+        temperature: 0.2
+        max-tokens: 2048
+
+    ollama:
+      base-url: http://localhost:11434
+      embedding:
+        model: bge-m3

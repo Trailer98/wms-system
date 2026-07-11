@@ -9,6 +9,7 @@ import com.example.wms.common.enums.MovementType;
 import com.example.wms.common.enums.OperationType;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -27,9 +28,15 @@ import java.util.List;
  * restyle or disable one). Runs as a separate, independent {@link ApplicationRunner} bean rather than
  * folding into {@link DataInitializer} — dictionary seeding has nothing to do with RBAC seeding, and
  * Spring Boot runs every {@code ApplicationRunner} bean automatically regardless of how many there are.
+ * <p>
+ * DISABLED BY DEFAULT: this dictionary baseline now lives in Flyway migration
+ * {@code db/migration/V3__dict_base_data.sql}, the single source of truth for system base data. This
+ * runner is kept as the authoritative reference for what V3 must contain; re-enable it only with
+ * {@code wms.legacy-java-seeding.enabled=true} if you need the old startup-time seeding back.
  */
 @Component
 @Order(20)
+@ConditionalOnProperty(name = "wms.legacy-java-seeding.enabled", havingValue = "true")
 public class DictDataInitializer implements ApplicationRunner {
 
     private static final String OPERATION_TYPE_DICT_CODE = "stock_movement_operation_type";

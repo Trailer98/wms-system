@@ -1,3 +1,12 @@
+-- ==============================================================================================
+-- DEPRECATED — DO NOT USE. Kept only as historical reference.
+-- Database schema/init is now managed by Flyway: wms-admin/src/main/resources/db/migration/
+--   V1__init_schema.sql      (this file's content, verbatim)
+--   V2__system_base_data.sql (RBAC baseline, previously DataInitializer.java)
+--   V3__dict_base_data.sql   (dict baseline, previously DictDataInitializer.java)
+-- Spring Boot no longer auto-runs this (spring.sql.init.mode=never). See docs/database-migration.md.
+-- ==============================================================================================
+
 create table if not exists warehouses (
     id bigint not null,
     code varchar(64) not null unique,

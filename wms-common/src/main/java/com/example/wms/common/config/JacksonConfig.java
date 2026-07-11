@@ -20,7 +20,7 @@ import java.time.format.DateTimeFormatter;
 @Configuration
 public class JacksonConfig {
 
-    private static final ZoneId ZONE_ID = ZoneId.of("Asia/Shanghai");
+    private static final ZoneId ZONE_ID = ZoneId.of("Asia/Tokyo");
     private static final DateTimeFormatter DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
     @Bean

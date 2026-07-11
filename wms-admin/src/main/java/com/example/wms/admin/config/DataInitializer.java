@@ -17,6 +17,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,8 +34,16 @@ import java.util.stream.Collectors;
  * mappings and the initial admin/admin123 account) on every startup. Each step checks for
  * existing data first, so re-running on restart never duplicates rows and never clobbers
  * permission grants an operator has since customized by hand through the role-management UI.
+ * <p>
+ * DISABLED BY DEFAULT: this RBAC baseline now lives in Flyway migration
+ * {@code db/migration/V2__system_base_data.sql}, which is the single source of truth for system
+ * base data. This runner is kept (not deleted) as an escape hatch and as the authoritative
+ * reference for what V2 must contain; re-enable it only with {@code wms.legacy-java-seeding.enabled=true}
+ * if you ever need the old startup-time seeding back. Leaving both on would double-seed (harmlessly,
+ * since both are idempotent), but Flyway is intended to own this data now.
  */
 @Component
+@ConditionalOnProperty(name = "wms.legacy-java-seeding.enabled", havingValue = "true")
 public class DataInitializer implements ApplicationRunner {
 
     private static final Logger log = LoggerFactory.getLogger(DataInitializer.class);

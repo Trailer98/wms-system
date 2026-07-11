@@ -33,12 +33,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 // Covers acceptance cases 1 (admin sees everything / can call protected endpoints), 2 (a
 // view-only role is rejected by a create/lock-type endpoint) and 4 (unauthenticated calls are
-// rejected) from the RBAC requirement. DataInitializer seeds admin/admin123 and the four default
-// roles on startup against this same wms_system_test database, so no manual seeding is needed here
-// beyond creating one extra INVENTORY_VIEWER test user.
+// rejected) from the RBAC requirement. Flyway migration V2__system_base_data.sql seeds admin/admin123
+// and the four default roles against this same wms_system_test database, so no manual seeding is
+// needed here beyond creating one extra INVENTORY_VIEWER test user.
 @SpringBootTest(
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
-        properties = "spring.datasource.url=jdbc:mysql://localhost:3306/wms_system_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true"
+        properties = "spring.datasource.url=jdbc:mysql://localhost:3306/wms_system_test?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Tokyo&useSSL=false&allowPublicKeyRetrieval=true"
 )
 class AuthAndPermissionTest {
 

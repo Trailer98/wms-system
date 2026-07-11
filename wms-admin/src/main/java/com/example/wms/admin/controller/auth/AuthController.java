@@ -1,4 +1,4 @@
-package com.example.wms.admin.controller;
+package com.example.wms.admin.controller.auth;
 
 import com.example.wms.admin.annotation.SysOperationLog;
 import com.example.wms.admin.service.AuthService;

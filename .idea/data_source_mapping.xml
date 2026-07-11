@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="DataSourcePerFileMappings">
+    <file url="file://$PROJECT_DIR$/docker/pgvector/init/01-init.sql" value="da238829-72c9-4083-8195-de01b6a63ad5" />
+  </component>
+</project>
