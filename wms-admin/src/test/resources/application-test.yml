@@ -17,3 +17,12 @@ spring:
   flyway:
     enabled: true
     baseline-on-migrate: false
+
+  # The `ai` profile is NOT active under test, so the Spring AI chat/embedding models must be disabled:
+  # their auto-configuration otherwise activates by default (matchIfMissing) and the DeepSeek model
+  # fails the whole context with "API key must be set". The knowledge feature treats VectorStore as
+  # optional, so nothing under test needs these beans.
+  ai:
+    model:
+      chat: none
+      embedding: none

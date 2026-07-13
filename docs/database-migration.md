@@ -4,10 +4,21 @@
 
 ```
 wms-admin/src/main/resources/db/migration/
-├── V1__init_schema.sql        # 全部表结构（DDL），从旧 schema.sql 原样迁移
-├── V2__system_base_data.sql   # RBAC 基础数据（权限/角色/授权/admin），原 DataInitializer.java
-└── V3__dict_base_data.sql     # 库存流水字典（operationType/bizType），原 DictDataInitializer.java
+├── V1__init_schema.sql                       # 全部表结构（DDL），从旧 schema.sql 原样迁移
+├── V2__system_base_data.sql                  # RBAC 基础数据（权限/角色/授权/admin），原 DataInitializer.java
+├── V3__dict_base_data.sql                    # 库存流水字典（operationType/bizType），原 DictDataInitializer.java
+├── V4__add_konwledge_base_tables.sql         # AI 知识库表 knowledge_document / knowledge_chunk
+├── V5__alter_knowledge_document_add_content.sql  # knowledge_document 补 content + 继承元数据列
+├── V6__add_ai_knowledge_permissions.sql      # ai-knowledge:* 权限点 + 角色授权
+├── V7__ai_knowledge_dicts.sql                # ai_knowledge_* 展示字典
+└── V8__add_ai_rag_permissions.sql            # ai-rag:ask 权限点 + 角色授权（RAG 问答接口）
 ```
+
+> **V4 文件名拼写说明**：`V4__add_konwledge_base_tables.sql` 文件名把 knowledge 误拼为 `konwledge`。
+> 但**表名本身正确**（`knowledge_document` / `knowledge_chunk`），只是文件名有笔误。该迁移**已在各库执行**
+> （`flyway_schema_history` 中 rank 4、success=1，description = `add konwledge base tables`）。Flyway 的
+> `validate` 会校验 checksum 与 description，重命名文件会改变 description 导致校验失败，故**按红线不再修改**——
+> 仅在此说明。后续新表/新列一律用正确拼写的 `V8+` 增量脚本。
 
 旧的 `schema.sql` 已归档至 `docs/legacy-sql/schema.sql`（仅作历史参考，不再被加载）。
 `spring.sql.init.mode=never`，Spring Boot 不再自动执行任何 init SQL。

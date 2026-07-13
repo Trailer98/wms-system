@@ -14,9 +14,9 @@ spring:
       mode: never
 
   flyway:
-    url: jdbc:mysql://localhost:3306/wms_system?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Tokyo&useSSL=false&allowPublicKeyRetrieval=true
-    user: root
-    password: root123456
+    # No explicit url/user/password on purpose: Flyway follows the active profile's spring.datasource,
+    # so dev migrates wms_system and test migrates wms_system_test (test isolation). A hardcoded
+    # flyway.url would silently migrate that fixed DB regardless of profile.
     enabled: true
     locations: classpath:db/migration
     validate-on-migrate: true
@@ -29,6 +29,13 @@ spring:
     # must set its baseline strategy deliberately after a backup — see docs/database-migration.md.
   jackson:
     time-zone: Asia/Tokyo
+
+# Served under /api in every environment (the frontend axios baseURL and production ingress both assume
+# it). Kept in the base config — not a per-profile file — so dev, test and prod are consistent; the
+# interceptor's excludePathPatterns ("/auth/login", …) are relative to this context-path.
+server:
+  servlet:
+    context-path: /api
 
 management:
   endpoints:

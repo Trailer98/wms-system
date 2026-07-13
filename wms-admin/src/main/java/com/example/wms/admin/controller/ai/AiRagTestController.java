@@ -4,6 +4,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -14,8 +15,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
+/**
+ * Manual RAG smoke-test endpoints. Gated on the {@code ai} profile: it depends on the {@link VectorStore}
+ * / {@link ChatClient} beans that only exist under {@code ai} (see {@code AiVectorStoreConfig}), so
+ * without this the application context fails to load under other profiles (e.g. {@code test}).
+ */
 @RestController
 @RequestMapping("/ai/test")
+@Profile("ai")
 public class AiRagTestController {
 
     private final VectorStore vectorStore;

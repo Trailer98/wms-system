@@ -21,5 +21,4 @@ spring:
 
 server:
   port: 8081
-  servlet:
-    context-path: /api
+  # context-path (/api) is set globally in application.yml so every profile is consistent.
