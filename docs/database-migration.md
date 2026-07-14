@@ -11,8 +11,20 @@ wms-admin/src/main/resources/db/migration/
 ├── V5__alter_knowledge_document_add_content.sql  # knowledge_document 补 content + 继承元数据列
 ├── V6__add_ai_knowledge_permissions.sql      # ai-knowledge:* 权限点 + 角色授权
 ├── V7__ai_knowledge_dicts.sql                # ai_knowledge_* 展示字典
-└── V8__add_ai_rag_permissions.sql            # ai-rag:ask 权限点 + 角色授权（RAG 问答接口）
+├── V8__add_ai_rag_permissions.sql            # ai-rag:ask 权限点 + 角色授权（RAG 问答接口）
+└── V9__add_developer_role.sql                # 新增 DEVELOPER 角色，授予全部现有权限
 ```
+
+## 新增权限时必须同时授予 ADMIN 和 DEVELOPER
+
+`DEVELOPER` 角色（V9）定位是"拥有系统全部权限"，用于 RAG 问答按角色切换技术/业务回答模式（见
+`AiRagAskService.resolveAudienceMode`）。它的权限集合是**通过 Flyway 授权得到的一份快照**，不会随着
+新权限自动同步。**因此：任何新增 `sys_permission` 行的 migration，都必须同时把该权限授予 `ADMIN`
+和 `DEVELOPER`**（参考 V9 里对 DEVELOPER 的授权写法，与 V2/V6/V8 对 ADMIN 的授权写法完全一致：按
+`role_code` 解析角色、对 `sys_permission` 做条件过滤后插入 `sys_role_permission`，靠该表的
+`UNIQUE (role_id, permission_id)` 约束 + `ON DUPLICATE KEY UPDATE role_id = role_id` 保证幂等）。
+忘记同步会导致开发者角色的权限少于 ADMIN，且不会有任何报错提示——这是纯人工纪律要求，请在 code review
+时对照检查。
 
 > **V4 文件名拼写说明**：`V4__add_konwledge_base_tables.sql` 文件名把 knowledge 误拼为 `konwledge`。
 > 但**表名本身正确**（`knowledge_document` / `knowledge_chunk`），只是文件名有笔误。该迁移**已在各库执行**

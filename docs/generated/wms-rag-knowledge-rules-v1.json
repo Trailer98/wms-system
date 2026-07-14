@@ -1,0 +1,812 @@
+{
+  "createRules": [
+    {
+      "docCode": "INBOUND_RECEIVE_PUTAWAY_RULE",
+      "title": "入库收货与上架规则",
+      "module": "INBOUND",
+      "sourceType": "RULE",
+      "bizType": "INBOUND_ORDER",
+      "operationType": "INBOUND_RECEIVE",
+      "entityName": "inbound_order",
+      "scenario": "用户需要理解入库单收货后库存如何变化，以及为什么创建入库单时必须指定库位",
+      "keywords": [
+        "入库",
+        "收货",
+        "上架",
+        "库位",
+        "现存库存"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n入库收货是指仓库确认供应商或其他来源的货物已经到达，并将货物正式登记为系统库存。\n\n在当前系统中，入库单在创建时就需要为每一项货物指定目标仓库、库区和库位，因此\"收货\"与\"上架\"是同一个操作：一旦确认收货，货物立即计入所选库位的库存，不存在收货后再单独办理上架的独立环节。\n\n## 业务规则\n\n1. 创建入库单时，每个入库明细必须指定库区和库位，系统不允许只填数量而不指定库位。\n2. 执行\"收货\"后，系统会在对应仓库、库区、库位下增加库存的现存数量。\n3. 如果目标库位当前不可用（停用、锁定或盘点中），或者库位容量不足以容纳本次收货数量，系统会拒绝收货并提示原因。\n4. 如果库位已经存放其他 SKU 且该库位不允许混放，系统同样会拒绝收货。\n\n## 操作影响\n\n收货成功后，现存库存增加，并生成一条入库类型的库存流水，记录收货前后的库存快照。后续的出库锁库、库存查询、盘点都会基于这条库存记录进行。入库单状态从\"已创建\"变为\"已收货\"，收货后的入库单不能再修改明细。\n\n## 常见问题\n\n1. 入库不是只创建单据就会影响库存，必须执行收货动作后库存才会增加。\n2. 入库必须选择具体库位，系统没有\"先收货、再统一上架\"的两段式流程。\n3. 收货增加的是现存库存，不是锁定库存或冻结库存。\n\n## 技术说明\n\n对应后端 `InboundOrderService.receive()` 方法，内部调用 `InventoryService.receive()`：先校验库位可用性（`assertLocationUsable`），再校验容量（`WarehouseLocationMapper.tryOccupy`）与混放限制，通过后增加库存 `quantity` 字段并写入 `stock_movement`（`MovementType.INBOUND` / `OperationType.INBOUND_RECEIVE`）。若目标库区类型为异常区（`AreaType.EXCEPTION`），收货的同时会自动冻结这部分库存。"
+    },
+    {
+      "docCode": "INBOUND_ORDER_STATUS_FLOW_RULE",
+      "title": "入库单状态流转规则",
+      "module": "INBOUND",
+      "sourceType": "RULE",
+      "bizType": "INBOUND_ORDER",
+      "operationType": "INBOUND_STATUS_FLOW",
+      "entityName": "inbound_order",
+      "scenario": "用户需要理解入库单从创建到收货的状态变化，以及为什么入库单没有\"取消\"状态",
+      "keywords": [
+        "入库单",
+        "状态流转",
+        "已创建",
+        "已收货",
+        "删除"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n入库单只有两个状态：已创建和已收货，系统目前没有为入库单设计单独的\"已取消\"状态。\n\n## 业务规则\n\n1. 入库单创建后处于\"已创建\"状态，此时可以编辑收货明细（SKU、数量、库位）。\n2. 执行收货后，入库单进入\"已收货\"状态，库存随之增加，明细不能再修改。\n3. 如果入库单还处于\"已创建\"状态且尚未收货，可以直接删除该入库单，删除不会影响库存（因为还没有发生入库动作）。\n4. 一旦进入\"已收货\"状态，入库单不能再被删除，也没有反向\"撤销收货\"的操作。\n\n## 操作影响\n\n入库单状态直接决定了它是否还能被编辑或删除：处于\"已创建\"状态时是草稿性质的单据，一旦收货就成为已经影响库存、需要保留追溯的正式记录。\n\n## 常见问题\n\n1. 入库单没有\"已取消\"状态，如果发现单据填错且尚未收货，应直接删除，而不是寻找取消按钮。\n2. 已收货的入库单不能删除或撤销，如果收货数据有误，应通过库存调整单更正，而不是回退入库单本身。\n3. 入库单状态与库存是否变化直接对应：已创建=库存未变，已收货=库存已经增加。\n\n## 技术说明\n\n对应枚举 `InboundOrderStatus`，取值仅有 `CREATED`（已创建）和 `RECEIVED`（已收货）。`InboundOrderService.delete()` 只允许在 `CREATED` 状态下删除；`update()` 同样要求当前状态为 `CREATED`。"
+    },
+    {
+      "docCode": "OUTBOUND_ORDER_STATUS_FLOW_RULE",
+      "title": "出库单状态流转规则",
+      "module": "OUTBOUND",
+      "sourceType": "RULE",
+      "bizType": "OUTBOUND_ORDER",
+      "operationType": "OUTBOUND_STATUS_FLOW",
+      "entityName": "outbound_order",
+      "scenario": "用户需要理解出库单从创建、锁库、发货到取消的完整状态变化路径",
+      "keywords": [
+        "出库",
+        "状态流转",
+        "锁库",
+        "发货",
+        "取消"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n出库单一共有四个状态：已创建、已锁库、已发货、已取消，状态之间的流转是单向的，不允许跳跃或逆向操作。\n\n## 业务规则\n\n1. 出库单创建后处于\"已创建\"状态，此时可以修改出库明细。\n2. 执行\"锁库\"后，系统会为出库单锁定对应库存，状态变为\"已锁库\"；已锁库的出库单不能再修改明细。\n3. 执行\"确认发货\"后，系统真正扣减库存并生成发货流水，状态变为\"已发货\"。\n4. \"已创建\"或\"已锁库\"状态的出库单都可以取消；如果取消时已经锁库，系统会自动释放对应的锁定库存。\n5. \"已发货\"和\"已取消\"是终态：已发货的出库单不能再取消，已取消的出库单也不能再执行任何操作。\n\n## 操作影响\n\n不同状态对库存的影响不同：已创建时库存完全不受影响；已锁库时现存库存不变但锁定库存增加，可用库存相应减少；已发货时现存库存和锁定库存同时减少；已取消（若之前已锁库）会把锁定库存释放回可用状态。\n\n## 常见问题\n\n1. 出库单不能从\"已创建\"直接跳到\"已发货\"，中间必须经过\"已锁库\"。\n2. 只有\"已发货\"是真正扣减现存库存的节点，锁库阶段并不会减少现存库存。\n3. 已发货的出库单一律不能取消，即使发现问题也需要通过退货或反向业务处理，而不是取消原单。\n\n## 技术说明\n\n对应枚举 `OutboundOrderStatus`：`CREATED` → `LOCKED` → `SHIPPED`，以及从 `CREATED`/`LOCKED` 可达的 `CANCELLED`。分别对应 `OutboundOrderService` 的 `create`/`lock`/`ship`/`cancel`/`delete` 方法，每个方法都会先校验当前状态是否允许该操作。"
+    },
+    {
+      "docCode": "OUTBOUND_INSUFFICIENT_STOCK_RULE",
+      "title": "出库库存不足处理规则",
+      "module": "OUTBOUND",
+      "sourceType": "RULE",
+      "bizType": "OUTBOUND_ORDER",
+      "operationType": "OUTBOUND_LOCK",
+      "entityName": "outbound_order",
+      "scenario": "用户需要理解出库单锁库时如果库存不够会发生什么，以及系统如何从多个库位凑齐数量",
+      "keywords": [
+        "出库",
+        "库存不足",
+        "锁库失败",
+        "可用库存"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n出库锁库时，系统会自动在同一仓库内该 SKU 的所有可用库位之间凑数量，优先从拣货区、优先级更高的库位取货；只有当所有可用库位的可用库存加起来仍然不够时，才会判定为库存不足。\n\n## 业务规则\n\n1. 系统按库位优先级依次尝试锁定，一个库位不够会自动尝试下一个库位，直到凑够数量或库位用完。\n2. 已停用、已锁定、盘点中的库位不会参与这次锁库分配。\n3. 如果所有可用库位加起来仍然不足以满足出库数量，系统会拒绝这次锁库操作，并记录一条\"库存不足\"的异常事件，方便后续排查。\n4. 部分锁定不会保留：如果最终判定库存不足，本次尝试不会留下\"锁了一半\"的中间状态。\n\n## 操作影响\n\n锁库失败时出库单仍然停留在\"已创建\"状态，不会变成\"已锁库\"，现存库存和可用库存都不受影响。仓库人员需要先补充库存或调整出库数量，再重新尝试锁库。\n\n## 常见问题\n\n1. 库存不足不是指某一个库位不够，而是指该 SKU 在整个仓库范围内所有可用库位加起来都不够。\n2. 出库锁库判断的是可用库存，已经被其他单据锁定或被冻结的库存不会被重复分配。\n3. 锁库失败会在系统中留下异常事件记录，可以据此排查是哪个 SKU、哪个仓库出现了短缺。\n\n## 技术说明\n\n对应 `InventoryService.lockForOutbound()`：按 `AreaType.PICKING` 优先、库位拣货优先级、可用数量倒序排序候选库位，逐个尝试 `tryLock`；剩余数量仍大于 0 时记录 `ExceptionType.INVENTORY_NOT_ENOUGH` 异常事件并抛出业务异常，不会写入任何库存变化。"
+    },
+    {
+      "docCode": "OUTBOUND_LOCK_FAILURE_TROUBLESHOOT_RULE",
+      "title": "出库锁库失败排查规则",
+      "module": "OUTBOUND",
+      "sourceType": "EXCEPTION_GUIDE",
+      "bizType": "OUTBOUND_ORDER",
+      "operationType": "OUTBOUND_LOCK",
+      "entityName": "outbound_order",
+      "scenario": "用户遇到出库单锁库失败时，如何一步步排查原因",
+      "keywords": [
+        "出库锁库失败",
+        "排查",
+        "异常事件",
+        "库位不可用"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n出库单锁库失败通常有两类原因：一类是库存数量真的不够，另一类是虽然有库存，但存放这些库存的库位当前不可用。\n\n## 业务规则\n\n排查出库锁库失败，建议按以下顺序检查：\n\n1. 先确认该 SKU 在目标仓库的总可用库存（现存库存减去已锁定、已冻结部分）是否足够本次出库数量。\n2. 如果总可用库存看起来足够，检查这些库存所在的库位状态：停用、锁定或盘点中的库位不会参与本次锁库分配。\n3. 检查库存是否位于异常区：异常区库存通常处于冻结状态，不参与正常出库分配。\n4. 查看系统记录的异常事件，异常事件会记录触发失败的 SKU、仓库、库区、库位和具体原因，是排查的第一手依据。\n\n## 操作影响\n\n只要没有成功锁库，出库单就停留在\"已创建\"状态，不会对库存产生任何影响；处理完库存或库位问题后可以重新发起锁库。\n\n## 常见问题\n\n1. \"库存有数量\"不等于\"可以出库\"，还要看这些数量所在的库位是否可用。\n2. 盘点中的库位即使显示有库存，也不能参与出库锁库，需要等盘点完成。\n3. 出现在异常区的库存不会被当作可出库库存，即使账面数量非零。\n\n## 技术说明\n\n关键校验点：`WarehouseLocation.isUsable()` 只在库位状态为 `ENABLED` 时返回真；`InventoryService.assertLocationUsable()` 会根据库位状态（`DISABLED`/`LOCKED`/`COUNTING`/容量不足）映射成对应的 `ExceptionType` 并记录到 `wms_exception_events` 表；异常区（`AreaType.EXCEPTION`）库存在入库或调整入账时会自动冻结（`frozenQuantity` 增加），因此其 `availableQuantity` 通常为 0。"
+    },
+    {
+      "docCode": "INVENTORY_UNIQUE_DIMENSION_RULE",
+      "title": "库存余额唯一维度规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": "INVENTORY_DIMENSION",
+      "entityName": "inventory",
+      "scenario": "用户需要理解同一个 SKU 在系统中为什么会出现多条库存记录",
+      "keywords": [
+        "库存维度",
+        "唯一",
+        "仓库",
+        "库区",
+        "库位"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统中的一条库存记录，是按\"仓库 + SKU + 库区 + 库位\"这四个维度共同确定的，四者的组合在系统中唯一。\n\n## 业务规则\n\n1. 同一个 SKU 在同一个仓库的不同库位，会分别产生独立的库存记录，彼此互不合并。\n2. 只要仓库、SKU、库区、库位这四项完全一致，系统就认为是同一条库存记录，数量会累加到这一条上，不会重复创建。\n3. 查询某个 SKU 在某仓库的\"总库存\"，实际上是该仓库下这个 SKU 所有库位库存记录数量的合计。\n\n## 操作影响\n\n这一规则决定了入库、出库锁库、库存调整、盘点在处理库存时，都必须明确到具体的库区和库位，而不能只按\"仓库 + SKU\"笼统操作。库存流水、库存查询、可用库存计算，都是围绕这一条\"库存记录\"展开的。\n\n## 常见问题\n\n1. 不要以为一个 SKU 在一个仓库只会有一条库存记录，实际按库位可以拆分成多条。\n2. 入库时如果没有正确选择库位，可能会在错误的库位上创建新的库存记录，而不是累加到已有记录上。\n3. 查看\"库存不足\"时，需要注意是某个具体库位不足，还是整个仓库范围内都不足。\n\n## 技术说明\n\n对应数据库 `inventory` 表的唯一索引 `uk_inventory_dimension (warehouse_id, sku_id, area_id, location_id)`；查找与创建库存记录统一走 `InventoryService.findOrCreateInventory()`，按这四个字段加锁查询，不存在则新建。"
+    },
+    {
+      "docCode": "INVENTORY_NON_NEGATIVE_RULE",
+      "title": "库存不能为负规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "inventory",
+      "scenario": "用户需要理解为什么系统不允许库存数量变成负数，以及超量操作会发生什么",
+      "keywords": [
+        "库存不能为负",
+        "超量出库",
+        "超量调减"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n无论是出库、调整还是其他扣减操作，系统都不允许把库存数量扣成负数，也不允许扣减后低于已经被锁定或冻结的部分。\n\n## 业务规则\n\n1. 出库锁库时，最多只能锁定当前可用库存的数量，超出部分会被判定为库存不足，整单锁库失败。\n2. 库存调减、确认发货等扣减类操作，如果尝试扣减的数量超过当时的现存库存，操作会被直接拒绝，不会出现负库存。\n3. 现存库存任何时候都必须大于或等于\"已锁定 + 已冻结\"之和，这一点在每次扣减时都会被校验。\n\n## 操作影响\n\n这条规则保证了系统里的库存数字始终真实可信，不会出现\"账面库存是负数\"这种无法对应实物的情况；一旦某次操作会导致库存为负，系统会直接终止该操作并报错，不会留下部分执行的中间状态。\n\n## 常见问题\n\n1. 如果出库或调减失败并提示数量不足，通常就是因为这条\"不能为负\"的规则生效了，需要先核实实际库存。\n2. 系统不会自动把超量部分\"打折扣\"执行，要么全部成功，要么整个操作都不生效。\n3. 已经被锁定或冻结的库存不能被普通的库存扣减操作再次占用。\n\n## 技术说明\n\n对应 `InventoryMapper.decreaseOnHand` 等 SQL 更新语句，均在 `UPDATE ... WHERE quantity - reservedQuantity - frozenQuantity >= 变化量` 这类条件下才会生效（受影响行数为 0 即视为库存不足），由数据库的原子更新保证并发场景下也不会出现负库存。"
+    },
+    {
+      "docCode": "INVENTORY_LOCK_FREEZE_RULE",
+      "title": "锁定库存与冻结库存规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "inventory",
+      "scenario": "用户需要区分\"锁定库存\"和\"冻结库存\"这两个容易混淆的概念",
+      "keywords": [
+        "锁定库存",
+        "冻结库存",
+        "可用库存",
+        "库存字段"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统里的库存除了\"现存库存\"之外，还有两类不能直接使用的库存：锁定库存和冻结库存，二者产生的原因不同。\n\n## 业务规则\n\n1. 锁定库存产生于出库单锁库：出库单锁库后，对应数量转为锁定库存，等发货后才真正从现存库存中扣除；如果出库单被取消，锁定库存会被释放，重新变为可用。\n2. 冻结库存产生于库存暂时不可用的场景，例如库存进入异常区（破损、待检等）、盘点期间对应库位的库存、以及库存调整单在\"转异常区\"提交后对源库存的临时冻结。\n3. 可用库存 = 现存库存 − 锁定库存 − 冻结库存；无论是锁定还是冻结，都不计入可用库存，出库分配时都不会用到这部分数量。\n\n## 操作影响\n\n区分这两个概念有助于理解为什么\"库存有数量\"但\"出不了库\"：可能是被别的出库单锁定了，也可能是处于异常区或盘点中被冻结了。两者在库存流水上分别对应不同的操作类型，便于追溯。\n\n## 常见问题\n\n1. 锁定库存和冻结库存都不是\"库存不见了\"，只是暂时不能被新的出库单使用。\n2. 锁定库存是因为有具体的出库单占用；冻结库存通常和库位状态或库区类型有关，不一定关联具体出库单。\n3. 出库单取消会释放锁定库存，但不会影响冻结库存；两者需要通过各自对应的业务流程分别处理。\n\n## 技术说明\n\n对应 `Inventory` 实体的 `reservedQuantity`（锁定/预占）与 `frozenQuantity`（冻结）字段，二者与 `quantity`（现存）共同计算得到 `getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity`。锁定通过 `tryLock`/`confirmShip`/`releaseLock` 维护；冻结通过 `tryFreeze`/`releaseFreeze`/异常区自动冻结逻辑维护。"
+    },
+    {
+      "docCode": "STOCK_MOVEMENT_TRACE_RULE",
+      "title": "库存流水追踪规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "stock_movement",
+      "scenario": "用户需要理解库存的每一次变化是如何被记录和追溯的",
+      "keywords": [
+        "库存流水",
+        "追溯",
+        "变化记录",
+        "业务单号"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n库存的每一次变化，无论是入库、出库、锁库、解锁、调整还是盘点，系统都会生成一条对应的库存流水记录，作为该次变化的凭据。\n\n## 业务规则\n\n1. 库存流水记录变化发生前和发生后的库存快照（现存、锁定、冻结数量），可以清楚看到这次操作具体改变了什么。\n2. 每条流水都会关联具体的业务单号（如入库单号、出库单号、调整单号、盘点单号），方便按单据反查库存变化。\n3. 流水一旦生成不会被修改或删除，是库存变化的历史记录，不是可编辑的草稿数据。\n4. 通过库存流水，可以完整重建某个 SKU、某个库位在任意时间段内的库存变化过程。\n\n## 操作影响\n\n库存流水是排查库存差异、核对账实是否一致的主要依据。当发现某个库位的库存数字和预期不符时，应优先查询该库位、该 SKU 的库存流水，而不是直接怀疑系统计算错误。\n\n## 常见问题\n\n1. 库存流水是只读的历史记录，不能通过修改流水来\"修正\"库存，如需修正应通过库存调整单或盘点。\n2. 一次业务操作可能产生多条流水（例如转异常区会同时产生\"转出\"和\"转入\"两条），需要按业务单号一起看。\n3. 库存流水的操作类型（如出库锁库、出库发货、库存调整增加）比业务单据状态更细粒度，能反映具体发生了什么动作。\n\n## 技术说明\n\n对应 `StockMovement` 实体与 `stock_movement` 表，核心字段包括 `type`（业务类型，如 INBOUND/OUTBOUND/ADJUSTMENT/LOCK/UNLOCK/COUNT）、`operationType`（具体操作类型，如 OUTBOUND_LOCK、STOCK_ADJUST_INCREASE）、变化前后的 `quantity`/`reservedQuantity`/`frozenQuantity`/`availableQuantity` 快照，以及 `businessNo`（业务单号）。所有增/减库存的方法（`increaseOnHand`/`decreaseOnHand`/`hold`/`releaseHold`/`decreaseFrozenOnHand`/`confirmShip` 等）都会在同一事务内写入对应流水。"
+    },
+    {
+      "docCode": "INVENTORY_STATUS_AREA_RULE",
+      "title": "库存状态与库区关系规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "inventory",
+      "scenario": "用户需要理解库存的\"正常/异常\"状态与它所在库区类型的关系",
+      "keywords": [
+        "库存状态",
+        "正常",
+        "异常",
+        "库区类型"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n每条库存记录都有一个状态标记：正常或异常，这个状态与库存所在库区的类型密切相关。\n\n## 业务规则\n\n1. 库存进入异常区（库区类型为\"异常区\"）时，系统会自动把这部分库存标记为冻结，不再参与正常的出库分配。\n2. 库存从异常区恢复到正常库区后，才会重新变为可用状态，重新参与出库锁库等分配。\n3. 库存状态的变化跟随库区类型走：库存搬到哪种类型的库区，就按该库区类型的规则处理，不需要额外单独设置。\n\n## 操作影响\n\n正确理解这一关系，有助于判断\"为什么这部分库存不能出库\"——如果库存当前所在库区是异常区，即使账面数量非零，也不会被出库单分配到。\n\n## 常见问题\n\n1. 库存状态不是可以随意手工修改的开关，而是随着库存所在的库区类型自动确定的。\n2. 只要库存还在异常区，就应视为暂不可用，需要走\"异常区恢复正常区\"的流程才能重新使用。\n3. 判断库存是否可用，既要看数量，也要看它当前所在的库区类型。\n\n## 技术说明\n\n对应枚举 `InventoryStatus`（`NORMAL`/`EXCEPTION`）与 `AreaType`（`RECEIVING`/`STORAGE`/`PICKING`/`QC`/`REVIEW`/`SHIPPING`/`EXCEPTION`/`FROZEN` 等八种库区类型）。`InventoryService.receive()`、`increaseOnHand()` 在目标库区类型为 `AreaType.EXCEPTION` 时会自动调用 `inventory.freeze(qty)` 冻结对应数量。"
+    },
+    {
+      "docCode": "WAREHOUSE_AREA_TYPE_RULE",
+      "title": "库区类型说明",
+      "module": "INVENTORY",
+      "sourceType": "FIELD_DICT",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "warehouse_area",
+      "scenario": "用户需要了解系统支持哪些库区类型及各自的用途",
+      "keywords": [
+        "库区类型",
+        "收货区",
+        "存储区",
+        "拣货区",
+        "质检区",
+        "复核区",
+        "发货区",
+        "异常区",
+        "冻结区"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统把仓库划分为多种类型的库区，不同类型的库区承担不同的作业职能。\n\n## 业务规则\n\n当前系统支持以下库区类型：\n\n1. 收货区：用于入库收货的临时存放。\n2. 存储区：用于日常库存存放的主要区域。\n3. 拣货区：出库分配时优先从这里取货，便于提高拣货效率。\n4. 质检区：用于存放待质检的库存。\n5. 复核区：用于出库前的复核环节。\n6. 发货区：用于待发货库存的临时存放。\n7. 异常区：用于存放破损、质量异常、盘点差异等暂不可正常使用的库存，此区域库存默认视为冻结状态。\n8. 冻结区：用于存放因其他原因需要冻结的库存。\n\n## 操作影响\n\n出库锁库分配库存时，系统会优先从拣货区取货；异常区的库存会被自动冻结，不参与正常出库分配。库区类型也决定了库存调整单里\"转异常区/恢复正常区\"操作时，源库区和目标库区分别必须满足的类型要求。\n\n## 常见问题\n\n1. 库区类型是仓库规划的基础信息，不是随意的分类标签，会直接影响库存能否被出库分配。\n2. 异常区不是\"随便放东西\"的地方，进入异常区的库存会自动冻结。\n3. 拣货区被优先分配，不代表其他库区的库存不能出库，只是拣货优先级更高。\n\n## 技术说明\n\n对应枚举 `AreaType`：`RECEIVING`、`STORAGE`、`PICKING`、`QC`、`REVIEW`、`SHIPPING`、`EXCEPTION`、`FROZEN`。库存调整单的转异常区/恢复正常区操作会校验源、目标库区的 `areaType` 是否分别满足 `EXCEPTION`/非 `EXCEPTION` 的要求。"
+    },
+    {
+      "docCode": "LOCATION_STATUS_RULE",
+      "title": "库位状态说明与禁用库位不可使用规则",
+      "module": "INVENTORY",
+      "sourceType": "FIELD_DICT",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "warehouse_location",
+      "scenario": "用户需要了解库位有哪些状态，以及为什么某些库位无法用于入库、出库或调整",
+      "keywords": [
+        "库位状态",
+        "启用",
+        "停用",
+        "锁定",
+        "盘点中",
+        "已满"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n每个库位都有自己的状态，只有处于\"启用\"状态的库位，才能参与入库收货、出库锁库和库存调整等操作。\n\n## 业务规则\n\n系统中的库位状态包括：\n\n1. 启用：正常可用状态，是唯一允许参与入库、出库、调整的状态。\n2. 停用：库位被人为停用，不能再存取货物。\n3. 锁定：库位被临时锁定，暂不可用。\n4. 盘点中：库位正在进行库存盘点，盘点完成前不能参与其他库存操作。\n5. 已满：库位容量已经用满，暂时无法再存放更多货物。\n\n只要库位不是\"启用\"状态，系统都会拒绝在该库位上进行入库收货、出库锁库或库存调整，并给出对应的原因提示。\n\n## 操作影响\n\n库位状态是所有库存操作的第一道门槛：即使库存数量、单据状态都满足要求，只要目标库位不是启用状态，操作依然会被拒绝。\n\n## 常见问题\n\n1. 库位停用后，即使里面还有历史库存，也不能再对它做新的入库、出库或调整操作。\n2. 盘点中的库位是暂时性的不可用，盘点完成后会自动恢复为启用状态。\n3. 库位状态和库存数量是两回事：库位有库存不代表库位一定可用。\n\n## 技术说明\n\n对应枚举 `LocationStatus`：`ENABLED`、`DISABLED`、`LOCKED`、`COUNTING`、`FULL`。`WarehouseLocation.isUsable()` 仅在状态为 `ENABLED` 时返回真；`InventoryService.assertLocationUsable()` 会把非启用状态映射为对应的 `ExceptionType`（`LOCATION_DISABLED`/`LOCATION_LOCKED`/`LOCATION_COUNTING`/容量不足）并记录异常事件。"
+    },
+    {
+      "docCode": "LOCATION_CAPACITY_RULE",
+      "title": "库位容量不足不可上架规则",
+      "module": "INVENTORY",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": "INBOUND_RECEIVE",
+      "entityName": "warehouse_location",
+      "scenario": "用户需要理解为什么入库收货有时会因为\"库位容量不足\"而失败",
+      "keywords": [
+        "库位容量",
+        "上架失败",
+        "容量不足"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n每个库位都有容量上限，入库收货或库存调增时，如果本次数量会导致库位超出容量上限，系统会拒绝这次操作。\n\n## 业务规则\n\n1. 库位的可用容量 = 容量上限 − 已占用数量。\n2. 入库收货时，系统会先校验本次收货数量是否超过目标库位的可用容量，超过则直接拒绝，不会执行部分收货。\n3. 拒绝的同时，系统会记录一条\"库位容量不足\"的异常事件，方便追溯是哪个库位、哪次操作触发的。\n\n## 操作影响\n\n库位容量不足会导致整次入库收货失败，库存不会发生任何变化。仓库人员需要更换一个容量充足的库位，或者先腾出该库位的空间，再重新尝试收货。\n\n## 常见问题\n\n1. 容量不足不是库存数量的问题，而是目标库位本身能容纳的空间不够。\n2. 系统不会自动把超出部分放到其他库位，需要人工重新选择库位。\n3. 容量校验发生在库位维度，即使仓库整体还有大量空间，单个库位容量用满依然会拒绝收货。\n\n## 技术说明\n\n对应 `WarehouseLocationMapper.tryOccupy()`：以 `capacityQty - usedQty >= 本次数量` 为条件的原子更新，返回受影响行数为 0 即代表容量不足；此时 `InventoryService.receive()` 会记录 `ExceptionType.LOCATION_CAPACITY_NOT_ENOUGH` 异常事件并终止收货。"
+    },
+    {
+      "docCode": "STOCK_ADJUST_INCREASE_RULE",
+      "title": "库存调增规则",
+      "module": "STOCK_ADJUST",
+      "sourceType": "RULE",
+      "bizType": "STOCK_ADJUST_ORDER",
+      "operationType": "STOCK_ADJUST_INCREASE",
+      "entityName": "stock_adjust_order",
+      "scenario": "用户需要理解库存调增的两种场景：基于已有库存记录调增，以及完全新增一条库存记录",
+      "keywords": [
+        "库存调增",
+        "账外调增",
+        "库存调整单"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n库存调增用于处理系统库存需要增加的场景，例如盘点发现多余库存、找到之前遗漏登记的库存等。调增支持两种方式：基于已有库存记录调增，或者账外新增一条库存记录。\n\n## 业务规则\n\n1. 如果调增是针对已经存在的库存记录（选择具体的库存行），系统会直接在该记录上增加数量。\n2. 如果没有对应的库存记录（例如仓库实物存在但系统里从未登记），可以选择\"账外新增\"：需要明确指定 SKU、库区、库位，并且必须显式确认允许创建新库存记录，系统才会在指定库位新建一条库存记录。\n3. 账外新增只能用于调增，不能用于调减；目标库位必须是启用状态，否则会被拒绝。\n4. 库存调整单需要经过\"草稿 → 已提交 → 已完成\"的流程，调增的库存变化在\"确认\"步骤才会真正生效。\n\n## 操作影响\n\n调增成功后，现存库存增加，并生成库存调整增加类型的库存流水，记录调整原因（例如找到库存、数据错误等）和操作人。\n\n## 常见问题\n\n1. 账外新增库存不是可以随意操作的功能，必须显式确认，且只能用于新增数量。\n2. 库存调整单在\"草稿\"和\"已提交\"阶段还没有真正影响库存，只有\"确认\"之后才会生效。\n3. 调增会明确记录调整原因，不是没有依据的数量修改。\n\n## 技术说明\n\n对应 `AdjustAction.QUANTITY_INCREASE`。`StockAdjustOrderService.addQuantityItem()`：有 `inventoryId` 时直接基于该库存记录调整；无 `inventoryId` 时要求 `allowCreateInventory=true` 且提供 `skuId`/`areaId`/`locationId`，并校验目标库位可用。确认时调用 `InventoryService.increaseOnHand()`，记录 `OperationType.STOCK_ADJUST_INCREASE` 流水。"
+    },
+    {
+      "docCode": "STOCK_ADJUST_BASIS_RULE",
+      "title": "调整必须基于库存记录规则",
+      "module": "STOCK_ADJUST",
+      "sourceType": "RULE",
+      "bizType": "STOCK_ADJUST_ORDER",
+      "operationType": null,
+      "entityName": "stock_adjust_order",
+      "scenario": "用户需要理解为什么库存调减、转异常区等操作必须先选择一条具体的库存记录",
+      "keywords": [
+        "库存调整",
+        "库存记录",
+        "调减依据"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n除了\"账外调增\"这一特殊场景外，库存调整单里的调减、转异常区、异常区恢复等操作，都必须基于一条已经存在的库存记录来进行，不能凭空对一个不存在的库存位置做调整。\n\n## 业务规则\n\n1. 调减、转异常区、异常区恢复类的调整明细，必须选择具体的库存记录（对应某个仓库、SKU、库区、库位组合）。\n2. 系统会校验所选库存记录确实属于本次调整单指定的仓库，跨仓库选择会被拒绝。\n3. 只有调增支持在没有库存记录的情况下\"账外新增\"，这是唯一的例外。\n\n## 操作影响\n\n这一规则保证了库存调整始终\"有据可查\"：每一次调减或转移都能追溯到具体是哪一条库存记录发生了变化，避免出现凭空产生或消失的库存。\n\n## 常见问题\n\n1. 想要调减库存，必须先能在系统里找到对应的库存记录，而不是直接填写一个数字。\n2. 调整单上选择的库存记录必须和调整单的仓库一致，不能跨仓库操作。\n3. 只有调增才允许\"没有库存记录也能新增\"，调减、转移都不适用这个例外。\n\n## 技术说明\n\n对应 `StockAdjustOrderService.addQuantityItem()`/`addTransferItem()`：非账外新增路径都要求 `itemRequest.inventoryId()` 非空，并通过 `InventoryService.requireInventoryById()` 加载真实库存记录，同时校验 `inventory.getWarehouseId()` 与调整单所属仓库一致。"
+    },
+    {
+      "docCode": "STOCK_ADJUST_DECREASE_LIMIT_RULE",
+      "title": "库存调减不能低于锁定和冻结库存规则",
+      "module": "STOCK_ADJUST",
+      "sourceType": "RULE",
+      "bizType": "STOCK_ADJUST_ORDER",
+      "operationType": "STOCK_ADJUST_DECREASE",
+      "entityName": "stock_adjust_order",
+      "scenario": "用户需要理解库存调减最多能减到多少，为什么不能把已经被占用的库存也一起减掉",
+      "keywords": [
+        "库存调减",
+        "锁定库存",
+        "冻结库存",
+        "调减上限"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n库存调减时，现存库存减少后的结果，不能低于当前已经被锁定和已经被冻结的数量之和，也就是调减之后可用库存不能变成负数。\n\n## 业务规则\n\n1. 调减前系统会校验：现存库存 − 本次调减数量 必须大于或等于（锁定库存 + 冻结库存）。\n2. 已经被出库单锁定、或者被冻结（异常区、盘点中等）的库存，不能通过普通的库存调减直接扣除。\n3. 如果确实需要处理这部分库存（例如异常区库存最终确认报废），需要走对应的专门流程（如异常区库存的调减），而不是对着仍在正常使用中的库存直接调减。\n\n## 操作影响\n\n这条规则避免了库存调减把\"已经被别的单据占用的库存\"也一并减掉，从而导致后续出库单锁库或发货时发现库存对不上。\n\n## 常见问题\n\n1. 库存调减不是\"现存库存足够就能减\"，还要看这部分库存有没有被锁定或冻结。\n2. 如果调减失败并提示数量不足，通常说明这部分库存已经被出库单占用或处于异常/盘点状态。\n3. 想要处理异常区库存，应该走异常区库存本身的调整流程，而不是对正常库位的库存直接调减。\n\n## 技术说明\n\n对应 `InventoryMapper.decreaseOnHand()` 的原子更新条件：`quantity - reservedQuantity - frozenQuantity >= 调减数量`，受影响行数为 0 时 `InventoryService.decreaseOnHand()` 会抛出\"现存数量不足\"的业务异常。"
+    },
+    {
+      "docCode": "QUALITY_ISSUE_INVENTORY_RULE",
+      "title": "质量异常库存处理规则",
+      "module": "STOCK_ADJUST",
+      "sourceType": "RULE",
+      "bizType": "STOCK_ADJUST_ORDER",
+      "operationType": "TRANSFER_TO_EXCEPTION_OUT",
+      "entityName": "stock_adjust_order",
+      "scenario": "用户需要理解质量异常的库存应该怎么处理，是否可以直接调减",
+      "keywords": [
+        "质量异常",
+        "库存调整",
+        "转异常区"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n质量异常（例如抽检不合格）与破损库存的处理方式完全一致：不能直接调减，必须先转移到异常区。\n\n## 业务规则\n\n1. 库存调整单的原因如果选择\"质量异常\"，系统不允许直接使用\"数量调减\"来处理这部分库存，只能通过\"转异常区\"操作。\n2. 转异常区后，这部分库存进入异常区并自动冻结，不再参与正常的出库分配，等待进一步质检、复检或处理。\n3. 后续根据处理结果，可能重新恢复到正常库区（质检合格），也可能最终通过异常区库存的调减流程注销（确认无法使用）。\n\n## 操作影响\n\n这样处理保证了库存账目和仓库实物在任何时候都保持一致：只要实物还在仓库，系统里的库存就不会凭空消失，只是标记为\"异常、暂不可用\"。\n\n## 常见问题\n\n1. 发现质量异常不能直接在系统里把库存数字减掉，必须先转移到异常区。\n2. 质量异常和破损库存走的是同一套处理机制，只是调整原因不同。\n3. 转异常区不会立即减少总的现存库存，只是把库存从\"可用\"状态变为\"异常、冻结\"状态。\n\n## 技术说明\n\n对应 `AdjustReasonType.QUALITY_ISSUE`，与 `DAMAGE`（破损）一样在 `StockAdjustOrderService.addItems()` 中被显式拦截：`QUALITY_ISSUE`/`DAMAGE` 原因不允许使用 `AdjustAction.QUANTITY_DECREASE`，必须使用 `AdjustAction.TRANSFER_TO_EXCEPTION`。"
+    },
+    {
+      "docCode": "EXCEPTION_AREA_NO_DIRECT_OUTBOUND_RULE",
+      "title": "异常区库存不可直接出库规则",
+      "module": "EXCEPTION",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": "TRANSFER_TO_EXCEPTION_IN",
+      "entityName": "inventory",
+      "scenario": "用户需要理解为什么异常区显示有库存，但出库单还是分配不到这部分数量",
+      "keywords": [
+        "异常区",
+        "不可出库",
+        "冻结库存"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n库存一旦进入异常区，就会被系统自动标记为冻结，不会被出库单锁库分配到，即使这部分库存的数量看起来是非零的。\n\n## 业务规则\n\n1. 库存进入异常区（无论是入库时直接收到异常区，还是通过\"转异常区\"调整进入）时，系统会自动把这部分数量标记为冻结。\n2. 出库锁库分配库存时，只会考虑可用库存（现存减去锁定、冻结），异常区库存的可用数量通常为零，因此天然不会被选中。\n3. 要让这部分库存重新参与出库，必须先执行\"异常区恢复正常区\"，把库存转回正常库区并解除冻结。\n\n## 操作影响\n\n这一规则确保了有质量问题、破损或待处理的库存不会被误发给客户；仓库人员看到异常区有库存时，应理解为\"暂不可用\"，而不是可以直接安排出库的库存。\n\n## 常见问题\n\n1. 异常区显示的库存数量不代表可以出库，这部分几乎总是处于冻结状态。\n2. 想让异常区库存重新可用，必须走\"恢复正常区\"流程，不能直接对异常区库存发起出库。\n3. 冻结不是永久状态，只是需要额外一步流程才能重新变为可用库存。\n\n## 技术说明\n\n`InventoryService.receive()`/`increaseOnHand()` 中，当目标库区 `getAreaType() == AreaType.EXCEPTION` 时会自动调用 `inventory.freeze(qty)`；出库分配逻辑 `loadAllocationCandidates()` 只挑选 `getAvailableQuantity() > 0` 且库位可用的库存，异常区库存的可用数量因冻结而通常为 0，因此不会出现在候选列表中。"
+    },
+    {
+      "docCode": "EXCEPTION_INVENTORY_WRITE_OFF_RULE",
+      "title": "异常区库存最终注销（报废）规则",
+      "module": "EXCEPTION",
+      "sourceType": "RULE",
+      "bizType": "STOCK_ADJUST_ORDER",
+      "operationType": "STOCK_ADJUST_DECREASE",
+      "entityName": "stock_adjust_order",
+      "scenario": "用户需要理解异常区的库存最终要如何从账面上清除",
+      "keywords": [
+        "报废",
+        "异常区注销",
+        "库存调减"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统目前没有单独的\"报废确认\"按钮或独立流程；异常区库存如果最终确认无法恢复使用（例如确认报废），需要通过库存调整单对这条异常区库存记录再次发起\"数量调减\"来完成注销。\n\n## 业务规则\n\n1. 库存进入异常区后，只是被冻结、暂不可用，并不会自动从账面消失，现存库存数字保持不变。\n2. 如果异常区库存经处理后确认可以恢复使用，走\"异常区恢复正常区\"流程。\n3. 如果异常区库存最终确认无法使用（报废、无法挽回），需要针对这条位于异常区的库存记录，另外发起一张库存调整单，选择\"数量调减\"，才会真正减少现存库存。\n4. 在完成上述调减之前，这部分库存会持续保留在异常区、保持冻结状态，不会被系统自动清除。\n\n## 操作影响\n\n这样设计保证了\"库存何时真正从账面消失\"始终对应一次明确的、有人工确认和记录的调减操作，而不是系统自动静默处理，便于追溯每一次库存价值的减少。\n\n## 常见问题\n\n1. 库存转入异常区不等于报废，只是进入了待处理状态。\n2. 系统里没有\"一键报废\"的独立功能，最终注销库存需要再走一次库存调整单的调减流程。\n3. 只要没有执行调减，异常区库存的现存数量会一直保留，可以随时改为走\"恢复正常区\"流程。\n\n## 技术说明\n\n异常区库存的最终注销复用了 `StockAdjustOrderService` 中 `AdjustAction.QUANTITY_DECREASE` 的既有能力（对已存在的库存记录调减），并没有单独的\"SCRAP/DISPOSE\"操作类型或专门服务；本文档描述的是当前实现的实际路径，而非独立的报废模块。"
+    },
+    {
+      "docCode": "STOCK_COUNT_SCOPE_RULE",
+      "title": "盘点范围规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "stock_count_task",
+      "scenario": "用户需要理解发起一次盘点任务时，盘点范围是如何确定的",
+      "keywords": [
+        "盘点范围",
+        "盘点任务",
+        "库区",
+        "库位"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n发起盘点任务时，需要先指定盘点范围：可以是整个仓库，也可以缩小到某个库区，甚至具体到某个库位。\n\n## 业务规则\n\n1. 盘点任务必须指定仓库；库区和库位是可选的进一步限定条件。\n2. 如果只指定仓库，盘点范围就是该仓库下所有有库存记录、且已经关联具体库位的库存。\n3. 如果同时指定了库区，盘点范围会限定在该库区下；如果进一步指定了库位，则只盘点该库位。\n4. 没有关联具体库位的库存记录不会被纳入盘点范围。\n\n## 操作影响\n\n盘点范围决定了开始盘点时哪些库存记录会被纳入快照、哪些库位会被锁定为\"盘点中\"状态；范围越大，涉及的库位越多，盘点期间受影响（暂不可入库出库）的库位也越多。\n\n## 常见问题\n\n1. 盘点范围不是必须覆盖整个仓库，可以按库区或库位缩小范围，减少对日常作业的影响。\n2. 范围内没有指定具体库位的库存记录不会出现在这次盘点里。\n3. 库区、库位是层层限定的关系：指定库位时通常也需要确保该库位属于已指定的库区。\n\n## 技术说明\n\n对应 `StockCountTaskService.loadScopedInventory()`：按 `warehouseId` 必填、`areaId`/`locationId` 可选进行过滤，并要求 `locationId is not null`。"
+    },
+    {
+      "docCode": "STOCK_COUNT_SNAPSHOT_RULE",
+      "title": "盘点快照规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "stock_count_item",
+      "scenario": "用户需要理解盘点开始时系统是如何记录\"账面数量\"的",
+      "keywords": [
+        "盘点快照",
+        "账面数量",
+        "盘点开始"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n盘点任务一旦开始，系统会为盘点范围内的每一条库存记录生成一条盘点明细，并把当时的库存数量固定下来作为\"账面数量\"快照。\n\n## 业务规则\n\n1. 开始盘点时，系统按范围内的每条库存记录（每个 SKU + 库区 + 库位组合）分别生成一条盘点明细。\n2. 每条盘点明细会记录开始盘点那一刻的现存、锁定、冻结数量，作为后续比对实盘数量的基准。\n3. 盘点期间即使库存发生变化，这份快照也不会被覆盖，保证盘点比对的基准是固定的。\n\n## 操作影响\n\n有了快照，后续录入实盘数量后，系统才能准确计算出盘盈或盘亏的差异数量；快照也是盘点报告和历史追溯的依据。\n\n## 常见问题\n\n1. 快照是盘点\"开始\"那一刻的数据，不是盘点\"完成\"时的数据。\n2. 盘点期间正常情况下不应该再对这些库位做其他入库出库操作（库位已被锁定），因此快照通常能代表当时的真实账面情况。\n3. 每条盘点明细对应一条具体的库存记录，而不是按 SKU 汇总的总量。\n\n## 技术说明\n\n对应 `StockCountTaskService.start()`：为范围内每条 `Inventory` 记录调用 `inventory.snapshot()` 生成 `InventorySnapshot`，并创建对应的 `StockCountItem`。"
+    },
+    {
+      "docCode": "STOCK_COUNT_LOCATION_LOCK_RULE",
+      "title": "盘点中库位禁止出入库规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "warehouse_location",
+      "scenario": "用户需要理解为什么盘点期间某些库位无法进行入库、出库或库存调整操作",
+      "keywords": [
+        "盘点中",
+        "库位锁定",
+        "禁止出入库"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n盘点任务一旦开始，涉及的库位会被系统标记为\"盘点中\"状态，在盘点完成或取消之前，这些库位不能进行入库、出库锁库或普通的库存调整操作。\n\n## 业务规则\n\n1. 开始盘点时，系统会把盘点范围内涉及的所有库位状态改为\"盘点中\"。\n2. 处于\"盘点中\"状态的库位，入库收货、出库锁库、库存调整（转异常区、恢复正常区、普通调增调减）都会被拒绝。\n3. 盘点完成或者盘点任务被取消后，这些库位会自动恢复为\"启用\"状态，重新可以参与其他库存操作。\n4. 例外情况是盘点完成本身：盘点完成时系统需要根据盘点结果直接修正库存，这一步允许对\"盘点中\"的库位进行库存变更，因为这正是解除盘点锁定的操作。\n\n## 操作影响\n\n这一规则避免了盘点过程中库存被其他业务操作干扰，保证盘点数据的准确性；仓库人员在盘点期间应避免对相关库位安排其他作业。\n\n## 常见问题\n\n1. 库位显示\"盘点中\"不是系统故障，而是正在进行盘点、暂时锁定的正常状态。\n2. 只有完成或取消盘点任务，库位才会恢复可用，不能手工强行修改库位状态来绕过限制。\n3. 盘点完成时对库存的修正，是系统允许的唯一例外操作，其他业务操作在盘点期间都会被拦截。\n\n## 技术说明\n\n对应 `StockCountTaskService.start()` 中调用 `WarehouseLocationService.updateStatus(locationId, COUNTING)`；`InventoryService.assertLocationUsable()` 会拒绝对 `COUNTING` 状态库位的入库/出库/普通调整请求。`StockCountTaskService.complete()` 则特意不调用该校验，因为完成盘点正是允许操作 `COUNTING` 库位的唯一场景；完成或取消后调用 `restoreLocations()` 把库位状态改回 `ENABLED`。"
+    },
+    {
+      "docCode": "STOCK_COUNT_RECORD_ACTUAL_RULE",
+      "title": "实盘数录入规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "stock_count_item",
+      "scenario": "用户需要理解如何录入盘点的实际清点数量，以及录入有什么前提条件",
+      "keywords": [
+        "实盘数量",
+        "盘点录入"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n盘点任务必须处于\"盘点中\"状态，才能录入各个库位、各个 SKU 的实际清点数量。\n\n## 业务规则\n\n1. 只有当盘点任务状态为\"盘点中\"时，才能对其下的盘点明细录入实盘数量。\n2. 录入实盘数量后，对应的盘点明细状态会变为\"已录入\"，同时记录备注信息（如有）。\n3. 每条盘点明细可以反复修改实盘数量，直到盘点任务被完成为止。\n\n## 操作影响\n\n实盘数量录入完成后，系统会用它和开始盘点时的账面快照数量比较，从而计算出盘盈或盘亏；只有全部明细都录入了实盘数量，盘点任务才能进入完成步骤。\n\n## 常见问题\n\n1. 盘点任务不是\"盘点中\"状态时（例如还是草稿，或已经完成），不能再录入实盘数量。\n2. 录入实盘数量本身不会立即改变库存，只有盘点任务\"完成\"之后才会真正修正库存。\n3. 漏录某一项会导致盘点任务无法完成，需要确保所有明细都完成了实盘录入。\n\n## 技术说明\n\n对应 `StockCountTaskService.record()`：要求任务状态为 `StockCountTaskStatus.COUNTING`，逐条更新 `StockCountItem.recordActual()`，明细状态变为 `StockCountItemStatus.RECORDED`。"
+    },
+    {
+      "docCode": "STOCK_COUNT_PROFIT_LOSS_RULE",
+      "title": "盘盈盘亏规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "stock_count_item",
+      "scenario": "用户需要理解盘点发现的数量差异，系统是如何处理盘盈和盘亏的",
+      "keywords": [
+        "盘盈",
+        "盘亏",
+        "盘点差异"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n盘点完成时，系统会比较实盘数量和账面快照数量：实盘比账面多，是盘盈；实盘比账面少，是盘亏；两者处理方式不同但都会修正库存并生成对应流水。\n\n## 业务规则\n\n1. 实盘数量大于账面数量的部分，系统会把差额作为\"库存盘点盘盈\"增加到现存库存。\n2. 实盘数量小于账面数量的部分，系统会把差额作为\"库存盘点盘亏\"从现存库存中扣减。\n3. 实盘数量与账面数量一致的明细，不会产生任何库存变化。\n4. 盘盈盘亏的处理都发生在盘点任务\"完成\"这一步，录入实盘数量的时候还不会生效。\n\n## 操作影响\n\n盘盈会增加现存库存，盘亏会减少现存库存，两者都会各自生成对应类型的库存流水，记录变化前后的数量。盘点带来的库存调整，是系统里除了库存调整单之外，另一条会直接修改库存数量的路径。\n\n## 常见问题\n\n1. 盘盈不是凭空增加库存，而是反映实物比账面记录得多；盘亏同理反映实物比账面少。\n2. 盘点差异的处理不需要额外发起库存调整单，完成盘点任务本身就会自动修正库存。\n3. 盘盈盘亏都会留下库存流水记录，可以追溯是哪次盘点任务导致的变化。\n\n## 技术说明\n\n对应 `StockCountTaskService.complete()`：按每条 `StockCountItem.getDiffQty()`（实盘 − 账面）判断，`diff > 0` 调用 `InventoryService.increaseOnHand()` 并记录 `OperationType.STOCK_COUNT_PROFIT`；`diff < 0` 调用 `decreaseOnHand()` 并记录 `OperationType.STOCK_COUNT_LOSS`；`diff == 0` 不产生库存变化。"
+    },
+    {
+      "docCode": "STOCK_COUNT_COMPLETE_RULE",
+      "title": "盘点完成后才修正库存规则",
+      "module": "STOCK_COUNT",
+      "sourceType": "RULE",
+      "bizType": "STOCK_COUNT_TASK",
+      "operationType": null,
+      "entityName": "stock_count_task",
+      "scenario": "用户需要理解盘点任务什么时候才会真正影响库存数量",
+      "keywords": [
+        "盘点完成",
+        "库存修正"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n盘点任务从开始到完成，只有\"完成\"这一步才会真正把盘点结果写入库存；开始盘点、录入实盘数量的过程都不会改变库存数量。\n\n## 业务规则\n\n1. 必须所有盘点明细都已经录入实盘数量，盘点任务才能被完成；只要还有明细没有录入，完成操作会被拒绝。\n2. 完成盘点时，系统才会根据每条明细的差异，统一执行盘盈或盘亏的库存修正。\n3. 完成盘点的同时，系统会把该任务涉及的库位状态从\"盘点中\"恢复为\"启用\"。\n4. 盘点任务也可以在开始后、完成前被取消，取消同样会释放库位的\"盘点中\"状态，但不会对库存做任何盘盈盘亏的修正。\n\n## 操作影响\n\n这一规则保证了库存修正是一次性、完整地基于全部盘点结果进行的，不会出现\"盘点做了一半，库存就已经改了一部分\"的中间状态。\n\n## 常见问题\n\n1. 只录入了部分实盘数量，盘点任务是不能完成的，也不会有任何库存变化。\n2. 盘点任务被取消不会产生盘盈盘亏的库存修正，只是把库位恢复为可用状态。\n3. 库存的实际修正时间点是\"点击完成\"的那一刻，不是每次录入实盘数量的时候。\n\n## 技术说明\n\n对应 `StockCountTaskService.complete()`：先校验 `items` 是否 `allMatch(status == RECORDED)`，不满足则抛出业务异常；满足后才遍历执行盘盈盘亏的库存变化，并调用 `restoreLocations()` 恢复库位状态为 `ENABLED`。"
+    },
+    {
+      "docCode": "BIZ_NO_GENERATION_RULE",
+      "title": "业务单号自动生成规则",
+      "module": "SYSTEM",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "biz_sequence",
+      "scenario": "用户需要理解入库单号、出库单号等业务单号是如何生成的，能否自己指定",
+      "keywords": [
+        "业务单号",
+        "自动生成",
+        "单号规则"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n入库单号、出库单号、库存调整单号、盘点单号、异常事件编号，都是由系统自动生成的，不支持人工指定。\n\n## 业务规则\n\n1. 系统为每一类业务单据分配固定的编号前缀，例如入库单以\"IN\"开头、出库单以\"OUT\"开头、库存调整单以\"ADJ\"开头、盘点单以\"CNT\"开头。\n2. 单号格式为\"前缀 + 8 位日期 + 至少 4 位流水号\"，例如某天第 1 张入库单可能是 IN202607080001。\n3. 流水号按天、按单据类型分别计数，不同类型、不同日期的单据互不影响彼此的流水号。\n4. 即使客户端在创建单据时传了自己指定的单号，系统也会忽略它，始终使用自动生成的编号。\n\n## 操作影响\n\n自动生成保证了同一天、同一类型的单号不会重复，也让单号本身就能看出单据类型和创建日期，便于人工识别和查找。\n\n## 常见问题\n\n1. 不能自己指定业务单号，即使提交时填写了单号也不会被采用。\n2. 单号里的日期是单据实际创建的日期，不是业务发生的日期。\n3. 流水号出现不连续（跳号）是正常现象，通常发生在单据创建过程中失败回滚的情况，不代表数据丢失。\n\n## 技术说明\n\n对应 `BizNoGeneratorService.generate()` 与枚举 `BizNoType`（`INBOUND_ORDER`→IN、`OUTBOUND_ORDER`→OUT、`STOCK_ADJUST_ORDER`→ADJ、`STOCK_COUNT_TASK`→CNT、`WMS_EXCEPTION`→EXC）。通过对 `biz_sequence` 表按日期+类型加行锁（`SELECT ... FOR UPDATE`）实现并发安全的流水号自增，避免多个请求同时生成重复编号。"
+    },
+    {
+      "docCode": "OPERATION_LOG_RULE",
+      "title": "操作日志记录规则",
+      "module": "OPERATION_LOG",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "sys_operation_log",
+      "scenario": "用户需要理解系统的关键操作是如何被记录下来的，以及记录失败会不会影响正常操作",
+      "keywords": [
+        "操作日志",
+        "审计",
+        "操作记录"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统对入库、出库、库存调整、盘点等关键业务操作，都会自动记录操作日志，用于审计和问题追溯。\n\n## 业务规则\n\n1. 操作日志会记录操作人、操作类型、所属模块、关联的业务单号和业务对象、请求路径、操作是否成功以及失败原因。\n2. 操作日志的记录发生在业务操作真正完成之后，业务单号等信息以后端实际生成的结果为准，不会采信客户端伪造的数值。\n3. 操作日志的写入是异步进行的，即使日志记录本身出现问题，也不会导致原本的业务操作失败或回滚。\n\n## 操作影响\n\n操作日志是排查\"谁在什么时候做了什么操作\"的主要依据，尤其在多人协作、跨班次交接时，可以用来核实具体的操作责任人和操作时间。\n\n## 常见问题\n\n1. 操作日志是记录操作发生的历史，不是可以随意编辑的数据，也不能通过日志反向影响业务状态。\n2. 日志记录失败不会阻断正在进行的业务操作，二者是相互独立的。\n3. 日志中的业务单号一定是系统生成的真实单号，不会因为客户端提交了错误数据而记录错误单号。\n\n## 技术说明\n\n对应注解 `@SysOperationLog` 与切面 `SysOperationAspect`：以 `@Around` 环绕通知包裹目标方法，在方法执行完毕后异步调用 `SysOperationLogAsyncService` 写入日志；业务单号/业务 ID 优先从方法执行结果中解析，日志写入过程中的异常会被捕获并记录告警日志，不会向上抛出影响业务响应。"
+    },
+    {
+      "docCode": "RBAC_PERMISSION_RULE",
+      "title": "RBAC权限控制规则",
+      "module": "RBAC",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "sys_permission",
+      "scenario": "用户需要理解系统是如何控制\"谁能看到什么菜单、谁能操作什么按钮\"的",
+      "keywords": [
+        "RBAC",
+        "权限控制",
+        "角色",
+        "权限点"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统采用\"用户 — 角色 — 权限\"三层的权限模型：每个用户被分配一个或多个角色，每个角色被授予一组权限点，用户最终拥有的权限是其所有角色权限的并集。\n\n## 业务规则\n\n1. 权限点分为菜单权限和按钮权限两类，分别控制某个页面是否可见、某个操作按钮是否可点击。\n2. 后端每一个受控接口都对应一个明确的权限点；调用接口时，系统会先校验当前登录用户是否拥有该权限点，没有权限会被直接拒绝。\n3. 未登录状态下调用任何受控接口都会被拒绝；已登录但权限不足时，会得到\"无权限\"的明确提示，而不是静默失败或报其他错误。\n4. 前端菜单、按钮的显示与隐藏，同样依据当前用户的权限集合动态决定。\n\n## 操作影响\n\n权限控制保证了不同岗位的人员只能看到、操作与自己职责相符的功能：例如仓库操作员可能只有日常出入库权限，而角色分配、权限配置这类管理功能只对特定角色开放。\n\n## 常见问题\n\n1. 前端隐藏了某个按钮，不代表安全性依赖于前端：后端接口本身也会做同样的权限校验。\n2. 权限是通过角色间接授予用户的，不能跳过角色直接给用户配置零散权限点。\n3. 一个用户可以同时拥有多个角色，最终权限是这些角色权限的合并，而不是取交集。\n\n## 技术说明\n\n对应 `@RequiresPermission` 注解与 `PermissionAspect` 切面：在目标方法执行前校验 `CurrentUserContext` 中的权限集合，未登录抛出 401（`UnauthorizedException`），权限不足抛出 403（`ForbiddenException`）。权限、角色、用户角色关系分别对应 `sys_permission`、`sys_role`、`sys_role_permission`、`sys_user_role` 表。"
+    },
+    {
+      "docCode": "DEVELOPER_ROLE_RULE",
+      "title": "开发者角色权限规则",
+      "module": "RBAC",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "sys_role",
+      "scenario": "用户需要理解\"开发者\"角色是做什么用的，和管理员角色有什么区别",
+      "keywords": [
+        "开发者角色",
+        "DEVELOPER",
+        "技术人员模式"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统内置了一个\"开发者\"角色，专门面向开发、测试、实施和技术调试人员，拥有系统当前全部的页面和按钮权限。\n\n## 业务规则\n\n1. \"开发者\"角色的权限集合会与\"系统管理员\"角色保持同步：系统新增任何权限点时，都会同时授予这两个角色。\n2. 拥有\"开发者\"角色的用户，在使用 AI 智能问答功能时，会自动获得\"技术人员模式\"的回答，允许在回答中出现系统字段名、枚举值等技术细节。\n3. \"系统管理员\"角色本身并不自动等同于\"开发者\"角色：如果希望某个管理员账号也使用技术人员模式，需要额外为其分配\"开发者\"角色。\n4. 一个用户可以同时拥有多个角色，只要其中包含\"开发者\"角色，问答就会使用技术人员模式。\n\n## 操作影响\n\n引入\"开发者\"角色，使得技术支持、实施调试人员既能拥有排查问题所需的全部页面权限，又能在使用智能问答时获得更贴近代码实现的回答，而不影响普通业务角色的使用体验。\n\n## 常见问题\n\n1. \"开发者\"角色不是\"系统管理员\"角色的别名，两者是分别独立维护的角色。\n2. 拥有管理员权限不代表智能问答会自动切换为技术人员模式，需要显式拥有\"开发者\"角色。\n3. 新增权限点时，如果只授予了管理员而遗漏了开发者角色，会导致开发者角色的权限逐渐落后于管理员。\n\n## 技术说明\n\n对应角色编码 `DEVELOPER`（Flyway 迁移中初始化，并授予当时系统内的全部 `sys_permission`）。回答模式的判断逻辑位于 `AiRagAskService.resolveAudienceMode()`：读取当前登录用户的 `roleCodes`，只要包含 `DEVELOPER` 即返回技术人员模式，判断依据是角色编码而非角色中文名称。"
+    },
+    {
+      "docCode": "DICT_USAGE_BOUNDARY_RULE",
+      "title": "数据字典使用边界规则",
+      "module": "SYSTEM",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "sys_dict_item",
+      "scenario": "用户需要理解数据字典和业务枚举之间的关系，以及修改字典会不会影响实际业务逻辑",
+      "keywords": [
+        "数据字典",
+        "字典边界",
+        "展示文案"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n系统里的数据字典（例如库存流水的操作类型文案、AI 知识库的模块/来源类型文案）只负责提供展示用的中文名称、排序和标签颜色，并不是业务规则本身的判断依据。\n\n## 业务规则\n\n1. 真正决定业务逻辑走向的是后端代码里的枚举值（例如库存流水的操作类型枚举），数据字典只是把这些枚举值翻译成界面上更友好的中文文案。\n2. 即使数据字典里缺少某个枚举值对应的文案配置，系统也会自动回退显示原始的枚举编码，不会因此报错或影响业务功能。\n3. 一部分字典项是系统内置的（标记为\"系统字典\"），这类字典项在管理界面上通常不允许被物理删除，只能调整展示文案、排序或启停用状态。\n\n## 操作影响\n\n理解这一边界后，管理数据字典时应该聚焦于\"文案好不好看、排序对不对\"，而不必担心修改字典会影响到入库、出库等具体的业务判断逻辑；反过来，如果业务逻辑出现问题，应该去检查代码里的枚举和判断条件，而不是先怀疑数据字典配置。\n\n## 常见问题\n\n1. 修改数据字典里某一项的文案，不会改变对应业务操作实际执行的逻辑。\n2. 字典项缺失不会导致页面报错，只会显示原始编码作为兜底。\n3. 系统内置的字典项通常不能删除，这是为了避免业务代码里引用的枚举值在界面上\"找不到\"对应文案。\n\n## 技术说明\n\n对应 `SysDictService.getLabel()`/`getTagType()`：查不到字典项时直接返回传入的原始值作为兜底文案；数据字典的 `is_system` 标记用于阻止管理界面物理删除系统内置字典项，相关判断逻辑与业务枚举（如 `OperationType`、`MovementType`）是两套独立的机制。"
+    },
+    {
+      "docCode": "RAG_STATIC_KNOWLEDGE_ONLY_RULE",
+      "title": "RAG只回答静态知识、不查询实时业务数据规则",
+      "module": "TOOL_CALLING",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "knowledge_document",
+      "scenario": "用户需要理解智能问答功能能回答什么问题、不能回答什么问题",
+      "keywords": [
+        "RAG",
+        "静态知识",
+        "实时库存",
+        "问答边界"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n当前系统的智能问答功能，只会基于知识库中预先整理好的静态业务规则文档来回答问题，不会去查询任何实时的库存、订单、库存流水或异常事件数据。\n\n## 业务规则\n\n1. 智能问答回答问题前，会先从知识库中检索出与问题相关的规则说明，再基于这些说明组织答案。\n2. 如果问题涉及\"某个 SKU 现在还有多少库存\"\"这张出库单现在是什么状态\"这类需要查询实时数据才能回答的问题，智能问答不会去查询实际数据库，也不会编造一个看起来合理的数字。\n3. 遇到这类问题时，智能问答会明确告知用户：这类实时数据需要通过系统里的业务查询功能获取，而不是尝试给出一个答案。\n4. 如果知识库中没有检索到与问题相关的规则，智能问答会明确说明\"未检索到足够相关的知识\"，而不是勉强编一个回答。\n\n## 操作影响\n\n这一边界保证了智能问答给出的内容始终是可靠、可追溯到具体知识文档的规则性说明，不会因为查询不到实时数据就编造一个可能出错的答案，避免误导使用者的实际业务决策。\n\n## 常见问题\n\n1. 智能问答能解释\"规则是什么\"，但不能回答\"当前实际数据是多少\"。\n2. 问答如果提到实时库存、订单、流水，应把它理解为在说明规则本身，而不是在报告当前真实数值。\n3. 检索不到相关知识时，问答会如实告知，而不是给出一个听起来合理但缺乏依据的答案。\n\n## 技术说明\n\n`AiRagAskService` 只会调用 `KnowledgeService.search()` 检索知识库分片，不会注入任何 inventory、inbound、outbound、stock-movement、exception 等业务查询服务；系统提示词明确要求\"不要编造实时库存、订单、流水或异常事件数据\"，涉及实时数据的问题会被引导说明\"需要通过业务查询接口获取\"。"
+    },
+    {
+      "docCode": "TOOL_CALLING_BOUNDARY_RULE",
+      "title": "Tool Calling边界规则（当前未实现）",
+      "module": "TOOL_CALLING",
+      "sourceType": "TOOL_GUIDE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": null,
+      "scenario": "用户或开发者需要明确当前智能问答是否具备调用工具查询实时数据的能力",
+      "keywords": [
+        "Tool Calling",
+        "工具调用",
+        "未实现",
+        "边界说明"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n当前系统的智能问答功能没有接入 Tool Calling（工具调用）能力，无法在回答过程中主动去调用库存查询、订单查询等业务接口获取实时数据。\n\n## 业务规则\n\n1. 智能问答目前的能力边界是\"基于知识库做静态规则问答\"，不具备自主调用系统接口查询实时数据的能力。\n2. 如果用户的问题必须依赖实时数据才能准确回答（例如某个具体 SKU 当前的库存数量），智能问答会说明这一点，并建议使用者改用系统里对应的业务查询页面或接口。\n3. 这个边界是当前版本的设计选择，不代表系统架构上完全不能扩展；但截至目前的代码实现，没有任何工具调用相关的代码或接口。\n\n## 操作影响\n\n明确这一边界，有助于合理设定对智能问答功能的预期：可以用它来学习和确认业务规则、排查操作层面的问题，但不能把它当作实时数据查询入口。\n\n## 常见问题\n\n1. 智能问答不会\"偷偷\"帮你查一下实时库存再回答，它完全依赖知识库中的静态文本。\n2. 如果发现回答里出现了具体的库存数字，应理解为知识库示例说明里提到的数字，而不是当前系统的真实库存。\n3. 未来即使系统扩展了工具调用能力，也需要在文档和系统提示词中重新明确边界，而不是默认认为已经支持。\n\n## 技术说明\n\n代码层面确认：`AiRagAskService`/`KnowledgeService` 均未引入任何 Tool Calling 相关依赖或调用逻辑，系统提示词中会提示\"实时数据需要通过业务查询工具获取\"，但这只是文案层面的说明，并不代表已经实现了对应的工具调用能力。"
+    },
+    {
+      "docCode": "RAG_AUDIENCE_MODE_RULE",
+      "title": "开发者与业务用户回答模式规则",
+      "module": "RBAC",
+      "sourceType": "RULE",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "sys_role",
+      "scenario": "用户需要理解为什么不同账号问同一个问题，智能问答给出的措辞会不一样",
+      "keywords": [
+        "回答模式",
+        "技术人员模式",
+        "业务用户模式",
+        "开发者角色"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n智能问答会根据当前登录账号的角色，自动选择两种回答模式之一：业务用户模式或技术人员模式，使用者不能通过页面手动切换这个模式。\n\n## 业务规则\n\n1. 如果当前登录用户拥有\"开发者\"角色，智能问答会使用技术人员模式：回答中可以出现系统字段名、枚举值等技术细节。\n2. 如果当前登录用户没有\"开发者\"角色（包括普通的系统管理员），智能问答会使用业务用户模式：优先使用中文业务术语说明规则，不堆砌英文字段名。\n3. 回答模式完全由后端根据登录用户的角色判断决定，前端界面只负责展示当前使用的是哪种模式，不提供手动切换的入口。\n4. 两种模式下，问答依据的知识库内容是完全一样的，区别只在于最终答案的表达方式和详略程度。\n\n## 操作影响\n\n这样设计使得同一套知识库既能满足普通仓库人员\"听得懂业务术语\"的需求，又能满足开发、测试、实施人员\"需要看到具体字段名以便排查问题\"的需求，而不需要维护两份独立的知识内容。\n\n## 常见问题\n\n1. 页面上看到的\"业务用户模式/技术人员模式\"标签，是账号角色决定的结果展示，而不是可以自行点选的开关。\n2. 同一个账号在不同时间提问，只要角色没有变化，回答模式就不会变化。\n3. 如果发现自己应该看到技术细节但回答仍然是业务化表述，需要确认账号是否已经被分配\"开发者\"角色。\n\n## 技术说明\n\n对应 `AiRagAskService.resolveAudienceMode()`：从 `CurrentUserContext` 读取当前用户的 `roleCodes`，判断是否包含 `DEVELOPER`；非流式接口在响应体中返回 `audienceMode`/`audienceModeLabel`，流式接口通过最先发送的 `meta` 事件携带同样的信息，请求体中即使包含类似 `audience` 的字段也会被后端忽略，不会影响判断结果。"
+    },
+    {
+      "docCode": "KNOWLEDGE_MAINTENANCE_RULE",
+      "title": "知识更新与接口变更后的知识维护规则",
+      "module": "SYSTEM",
+      "sourceType": "SOP",
+      "bizType": null,
+      "operationType": null,
+      "entityName": "knowledge_document",
+      "scenario": "知识库维护人员需要理解编辑知识后要做什么，以及系统接口变更后是否需要同步更新知识",
+      "keywords": [
+        "知识维护",
+        "重新向量化",
+        "知识更新",
+        "接口变更"
+      ],
+      "version": "v1.0",
+      "contentFormat": "MARKDOWN",
+      "chunkStrategy": "NONE",
+      "status": "ENABLED",
+      "autoVectorize": true,
+      "content": "## 规则说明\n\n知识库中的每一条知识都是预先整理好的静态文本快照，不会随着系统代码的变化而自动更新；知识内容或系统接口发生变化后，都需要人工维护知识文档并重新完成向量化，智能问答才能检索到最新的内容。\n\n## 业务规则\n\n1. 编辑一条知识文档的正文内容，或者修改它的分片策略，系统会重新对这条知识进行分片，新分片的向量状态会变为\"待向量化\"。\n2. 只有显式勾选\"自动向量化\"，或者之后手动执行\"重新向量化\"操作，新的分片内容才会被真正写入向量索引；在此之前，检索到的仍然是旧的向量结果。\n3. 只修改知识的模块、来源类型等元数据信息（不改变正文和分片策略），系统会同步更新已有分片的元数据，但不会重新生成分片本身。\n4. 如果系统的业务功能、字段、枚举或接口发生了变化，知识库中相应的知识文档需要人工同步更新内容，系统不会自动感知代码变化并调整知识文本。\n\n## 操作影响\n\n忽略\"重新向量化\"这一步，会导致知识文档看起来已经更新，但智能问答检索到的仍然是旧内容；同样，如果业务代码发生了变化但没有同步维护对应的知识文档，智能问答给出的规则说明可能与系统当前的真实行为不一致。\n\n## 常见问题\n\n1. 保存知识文档不等于立即生效在检索结果里，还需要确认向量化是否成功完成。\n2. 只改了标题、模块这类元数据，不会触发重新分片，但也不需要触发，因为正文没有变化。\n3. 系统升级、字段调整之后，知识库内容需要有人专门review和更新，这不是一个自动化的过程。\n\n## 技术说明\n\n对应 `KnowledgeService.update()`：正文或分片策略变化时会删除旧分片、重新分片，新分片 `vector_status` 初始为 `PENDING`；仅元数据变化时调用 `syncChunkMetadata()` 同步分片的模块/来源类型/关键词等字段，并将向量状态标记为 `STALE`（不重新分片）。向量化本身依赖 `KnowledgeVectorizer`（BGE-M3 + pgvector），需要 `ai` profile 下的向量库可用才能真正生效。"
+    }
+  ],
+  "updateRules": [
+    {
+      "docCode": "OUTBOUND_RULE_25B6CE",
+      "title": "出库取消解锁规则",
+      "issue": "现有内容只覆盖了\"已锁库、尚未发货\"这一种取消场景（对应 OutboundOrderStatus.LOCKED），没有说明\"已创建、尚未锁库\"状态下取消出库单的更简单场景（此时没有锁定库存需要释放，直接把状态改为已取消即可）。建议补充这一分支，使规则覆盖 OutboundOrderService.cancel() 的完整逻辑（CREATED 和 LOCKED 两种可取消状态）。",
+      "suggestedAddition": "补充一段：\"如果出库单还处于'已创建'状态（尚未锁库），取消操作会更简单：因为还没有发生库存锁定，系统只需要把出库单状态直接改为'已取消'，不需要释放任何锁定库存，也不会产生库存流水。\"",
+      "reason": "对应 OutboundOrderService.cancel()：当 order.getStatus() == CREATED 时直接调用 order.markCancelled()，不会进入 releaseLocks() 分支；现有文档标题和内容都只描述了 LOCKED 状态下的取消（有锁定库存需要释放的场景），内容不完整。"
+    }
+  ],
+  "fixRules": [
+    {
+      "docCode": "OUTBOUND_LOCK_RULE",
+      "title": "出库锁库库存校验规则",
+      "issue": "正文中使用了 locked_qty、total_qty 两个字段名。total_qty 在代码中完全没有依据（Inventory 实体没有\"总库存\"这个字段，只有 quantity 现存库存）；locked_qty 只是内部快照记录的字段名，不是对外字段名。",
+      "suggestedFix": "把 \"locked_qty（占用数量）\"改为\"reservedQuantity（锁定/预占库存）\"；把\"总库存 total_qty\"改为\"现存库存 quantity\"。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "INVENTORY_FIELD_DICT_590257",
+      "title": "库存数量字段规则说明",
+      "issue": "整篇正文都在把 on_hand_qty/locked_qty/frozen_qty/available_qty 当作系统的标准字段名讲解，但 Inventory 实体和对外 API 实际使用的是 quantity/reservedQuantity/frozenQuantity/availableQuantity（camelCase）。",
+      "suggestedFix": "把四个字段名分别改为 quantity（现存库存）、reservedQuantity（锁定库存）、frozenQuantity（冻结库存）、availableQuantity（可用库存，由 getAvailableQuantity() 计算得到），公式相应改为 availableQuantity = quantity - reservedQuantity - frozenQuantity。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "INVENTORY_RULE_6481A7",
+      "title": "可用库存计算规则",
+      "issue": "同上，公式与举例全部使用 on_hand_qty/locked_qty/frozen_qty/available_qty 这套不存在于 Inventory 实体的字段名。",
+      "suggestedFix": "同上，替换为 quantity/reservedQuantity/frozenQuantity/availableQuantity。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "OUTBOUND_RULE_6E075D",
+      "title": "出库确认发货规则",
+      "issue": "正文使用 on_hand_qty、locked_qty 描述发货时的库存扣减。",
+      "suggestedFix": "改为 quantity（现存库存）、reservedQuantity（锁定库存），例如\"扣减 quantity；扣减 reservedQuantity\"。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "OUTBOUND_RULE_25B6CE",
+      "title": "出库取消解锁规则",
+      "issue": "正文使用 locked_qty、on_hand_qty 描述取消解锁时的库存变化（与上面的 updateRules 是同一条文档，字段名问题和内容不完整问题一并说明）。",
+      "suggestedFix": "改为 reservedQuantity（锁定库存）、quantity（现存库存）。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "OUTBOUND_RULE_845F5C",
+      "title": "已发货出库单不能取消规则",
+      "issue": "正文使用 on_hand_qty 描述发货后已扣减的库存。",
+      "suggestedFix": "改为 quantity（现存库存）。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "STOCK_ADJUST_RULE_536D41",
+      "title": "正常区转异常区规则",
+      "issue": "正文提到\"整体 on_hand_qty 总量保持不变\"，使用了不存在的字段名。",
+      "suggestedFix": "改为\"整体现存库存（quantity）总量保持不变\"。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。"
+    },
+    {
+      "docCode": "STOCK_ADJUST_RULE_C104F8",
+      "title": "库存调减规则",
+      "issue": "两个问题：（1）正文使用 on_hand_qty 描述现存库存字段名，与实体实际字段不符；（2）正文声称\"库存调减通常会影响库存资产价值，因此系统可以生成财务影响事件，用于后续财务确认或生成凭证\"——经代码扫描确认，当前系统没有任何财务事件（finance event）相关的表、服务或接口（StockAdjustOrderService 源码注释中明确写明\"there is no finance-event service in this codebase yet\"），这一描述属于虚构系统当前不存在的能力。",
+      "suggestedFix": "（1）把 on_hand_qty 改为 quantity（现存库存）；（2）删除或改写关于\"生成财务影响事件\"的描述，改为如实说明\"当前系统没有实现库存调整关联财务事件的功能，库存调减只会生成库存调整类型的库存流水\"。",
+      "reason": "Inventory 实体与数据库字段实际为 quantity（现存）/reservedQuantity（锁定）/frozenQuantity（冻结），计算方法为 getAvailableQuantity() = quantity - reservedQuantity - frozenQuantity；on_hand_qty/locked_qty/frozen_qty/available_qty 这套命名只出现在 StockMovement 内部使用的 InventorySnapshot 记录里（用于流水前后快照的内部字段名），并不是 Inventory 实体或对外 API （如 StockMovementResponse 的 beforeQuantity/afterQuantity 等）使用的命名，容易让读者误以为这是系统统一使用的字段名。 另外，财务事件（finance event）在当前代码库中完全没有对应的表、Service 或 Controller，StockAdjustOrderService.java 的代码注释明确说明这一点；本条规则声称\"系统可以生成财务影响事件\"缺乏代码依据，属于需要修正的虚构内容。"
+    }
+  ]
+}
