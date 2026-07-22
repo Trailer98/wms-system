@@ -1,12 +1,14 @@
 package com.example.wms.admin;
 
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
+import com.example.wms.admin.client.AuthContextResponse;
 import com.example.wms.admin.model.entity.SysRole;
 import com.example.wms.admin.model.entity.SysUser;
 import com.example.wms.admin.model.entity.SysUserRole;
 import com.example.wms.admin.model.mapper.SysRoleMapper;
 import com.example.wms.admin.model.mapper.SysUserMapper;
 import com.example.wms.admin.model.mapper.SysUserRoleMapper;
+import com.example.wms.admin.security.GatewayUserContextInterceptor;
 import com.example.wms.admin.security.PasswordEncoder;
 import com.example.wms.admin.view.dto.LoginRequest;
 import com.example.wms.common.common.ApiResponse;
@@ -16,8 +18,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
@@ -28,6 +33,7 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -47,6 +53,15 @@ class AiRagAskControllerTest {
 
     private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
+    @TestConfiguration
+    static class AuthClientTestConfig {
+        @Bean
+        @Primary
+        TestAuthServiceClient testAuthServiceClient() {
+            return new TestAuthServiceClient();
+        }
+    }
+
     @LocalServerPort
     private int port;
 
@@ -60,8 +75,11 @@ class AiRagAskControllerTest {
     private SysUserRoleMapper sysUserRoleMapper;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private TestAuthServiceClient authServiceClient;
 
     private String viewerUsername;
+    private Long viewerUserId;
 
     @BeforeEach
     void setUp() {
@@ -70,6 +88,7 @@ class AiRagAskControllerTest {
 
         SysUser viewer = new SysUser(viewerUsername, passwordEncoder.encode("viewer123"), "RAG权限测试查看员", null, null);
         sysUserMapper.insert(viewer);
+        viewerUserId = viewer.getId();
 
         SysRole viewerRole = sysRoleMapper.selectOne(Wrappers.lambdaQuery(SysRole.class)
                 .eq(SysRole::getRoleCode, "INVENTORY_VIEWER"));
@@ -102,7 +121,9 @@ class AiRagAskControllerTest {
         // V8 grants ai-rag:ask to ADMIN/WAREHOUSE_MANAGER/WAREHOUSE_OPERATOR only — unlike the
         // read-only ai-knowledge:search, this invokes the chat model on every call.
         String token = login(viewerUsername, "viewer123");
-        ResponseEntity<ApiResponse> response = postWithToken(token, Map.of("question", "为什么出库锁库后库存没有减少？"));
+        mockAuthContext(viewerUserId, viewerUsername, List.of("INVENTORY_VIEWER"), List.of("inventory:view"));
+        ResponseEntity<ApiResponse> response = postWithGatewayHeaders(
+                token, viewerUserId, viewerUsername, Map.of("question", "为什么出库锁库后库存没有减少？"));
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
         assertEquals(403, response.getBody().code());
     }
@@ -110,7 +131,9 @@ class AiRagAskControllerTest {
     @Test
     void adminBlankQuestionReturnsBadRequest() {
         String token = login("admin", "admin123");
-        ResponseEntity<ApiResponse> response = postWithToken(token, Map.of("question", ""));
+        Long adminUserId = adminUserId();
+        mockAuthContext(adminUserId, "admin", List.of("ADMIN"), List.of("ai-rag:ask"));
+        ResponseEntity<ApiResponse> response = postWithGatewayHeaders(token, adminUserId, "admin", Map.of("question", ""));
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
     }
 
@@ -120,9 +143,22 @@ class AiRagAskControllerTest {
         // AiRagAskServiceTest), so this proves the HTTP + permission + operation-log wiring is sound
         // end to end without needing a real DeepSeek API key.
         String token = login("admin", "admin123");
-        ResponseEntity<ApiResponse> response = postWithToken(token, Map.of("question", "为什么出库锁库后库存没有减少？"));
+        Long adminUserId = adminUserId();
+        mockAuthContext(adminUserId, "admin", List.of("ADMIN"), List.of("ai-rag:ask"));
+        ResponseEntity<ApiResponse> response = postWithGatewayHeaders(
+                token, adminUserId, "admin", Map.of("question", "为什么出库锁库后库存没有减少？"));
         assertEquals(HttpStatus.OK, response.getStatusCode());
         assertEquals(200, response.getBody().code());
+    }
+
+    private void mockAuthContext(Long userId, String username, List<String> roles, List<String> permissions) {
+        authServiceClient.setContext(new AuthContextResponse(userId, username, "WMS", roles, permissions));
+    }
+
+    private Long adminUserId() {
+        SysUser admin = sysUserMapper.selectOne(Wrappers.lambdaQuery(SysUser.class).eq(SysUser::getUsername, "admin"));
+        assertNotNull(admin);
+        return admin.getId();
     }
 
     private String login(String username, String password) {
@@ -141,13 +177,17 @@ class AiRagAskControllerTest {
         }
     }
 
-    private ResponseEntity<ApiResponse> postWithToken(String token, Object body) {
+    private ResponseEntity<ApiResponse> postWithGatewayHeaders(String token, Long userId, String username, Object body) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + token);
+        headers.add(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token");
+        headers.add(GatewayUserContextInterceptor.HEADER_USER_ID, String.valueOf(userId));
+        headers.add(GatewayUserContextInterceptor.HEADER_USERNAME, username);
+        headers.add(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "test-token-id");
         return restTemplate.exchange(url("/ai/rag/ask"), HttpMethod.POST, new HttpEntity<>(body, headers), ApiResponse.class);
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + "/api" + path;
+        return "http://localhost:" + port + "/wms" + path;
     }
 }

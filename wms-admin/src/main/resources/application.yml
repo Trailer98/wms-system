@@ -2,6 +2,17 @@ spring:
   application:
     name: wms-admin
 
+  cloud:
+    nacos:
+      discovery:
+        enabled: true
+        server-addr: 127.0.0.1:8848
+        username: nacos
+        password: nacos
+        service: ${spring.application.name}
+        namespace: public
+        group: DEFAULT_GROUP
+
   profiles:
     default: dev
     group:
@@ -30,12 +41,11 @@ spring:
   jackson:
     time-zone: Asia/Tokyo
 
-# Served under /api in every environment (the frontend axios baseURL and production ingress both assume
-# it). Kept in the base config — not a per-profile file — so dev, test and prod are consistent; the
-# interceptor's excludePathPatterns ("/auth/login", …) are relative to this context-path.
+# Served under /wms in every environment. Gateway can expose this service under its external route
+# (for example /api/wms) while WMS keeps one stable internal servlet context.
 server:
   servlet:
-    context-path: /api
+    context-path: /wms
 
 management:
   endpoints:
@@ -60,6 +70,14 @@ knife4j:
   enable: true
   setting:
     language: zh_cn
+
+gateway:
+  # Required for direct WMS access protection. Configure the same value in gateway-service forwarding.
+  internal-token: local-dev-gateway-token
+
+auth-service:
+  base-url: ${AUTH_SERVICE_BASE_URL:http://127.0.0.1:8081/auth}
+  application-code: WMS
 
 wms:
   ai:

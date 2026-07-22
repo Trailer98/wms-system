@@ -1,6 +1,6 @@
 package com.example.wms.admin.config;
 
-import com.example.wms.admin.security.AuthInterceptor;
+import com.example.wms.admin.security.GatewayUserContextInterceptor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -8,27 +8,16 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class WebMvcConfig implements WebMvcConfigurer {
 
-    private final AuthInterceptor authInterceptor;
+    private final GatewayUserContextInterceptor gatewayUserContextInterceptor;
 
-    public WebMvcConfig(AuthInterceptor authInterceptor) {
-        this.authInterceptor = authInterceptor;
+    public WebMvcConfig(GatewayUserContextInterceptor gatewayUserContextInterceptor) {
+        this.gatewayUserContextInterceptor = gatewayUserContextInterceptor;
     }
 
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
-        registry.addInterceptor(authInterceptor)
+        registry.addInterceptor(gatewayUserContextInterceptor)
                 .addPathPatterns("/**")
-                .excludePathPatterns(
-                        "/auth/login",
-                        "/doc.html",
-                        "/webjars/**",
-                        "/swagger-ui/**",
-                        "/swagger-resources/**",
-                        "/v3/api-docs/**",
-                        "/v3/api-docs",
-                        "/knife4j/**",
-                        "/favicon.ico",
-                        "/actuator/**"
-                );
+                .excludePathPatterns("/auth/login");
     }
 }

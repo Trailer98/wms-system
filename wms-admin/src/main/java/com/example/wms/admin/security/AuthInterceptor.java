@@ -12,11 +12,15 @@ import org.springframework.web.servlet.HandlerInterceptor;
 import java.io.IOException;
 
 /**
+ * @deprecated WMS authentication now comes from Gateway identity headers and auth-service permission
+ * context. Kept temporarily as a rollback path for the legacy local JWT flow.
+ *
  * Parses {@code Authorization: Bearer <token>} on every request that isn't explicitly excluded
  * (see WebMvcConfig) and populates CurrentUserContext for the duration of the request. Missing or
  * invalid tokens short-circuit with a 401 written directly here (before the request ever reaches a
  * controller / the PermissionAspect).
  */
+@Deprecated(forRemoval = false)
 @Component
 public class AuthInterceptor implements HandlerInterceptor {
 

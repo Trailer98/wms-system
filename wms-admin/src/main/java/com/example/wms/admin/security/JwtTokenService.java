@@ -19,11 +19,16 @@ import java.util.Map;
 import java.util.Set;
 
 /**
+ * @deprecated WMS no longer parses local JWTs on protected requests. Gateway/auth-service validates
+ * tokens and WMS receives trusted Gateway headers. Kept temporarily for the legacy local login
+ * rollback path.
+ *
  * Stateless JWT issuing/parsing on top of Hutool (already a project dependency), so no new library
  * (Spring Security / jjwt) is introduced just for login. Roles and permission codes are baked into
  * the token payload at login time; there is no server-side revocation list, so permission changes
  * only take effect the next time a user logs in.
  */
+@Deprecated(forRemoval = false)
 @Component
 public class JwtTokenService {
 

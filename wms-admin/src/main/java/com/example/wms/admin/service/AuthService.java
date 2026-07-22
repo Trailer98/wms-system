@@ -31,6 +31,7 @@ import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
+@Deprecated(forRemoval = false)
 public class AuthService {
 
     private final SysUserMapper sysUserMapper;

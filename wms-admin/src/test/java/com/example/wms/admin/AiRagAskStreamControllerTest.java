@@ -1,6 +1,8 @@
 package com.example.wms.admin;
 
+import com.example.wms.admin.client.AuthContextResponse;
 import com.example.wms.admin.knowledge.KnowledgeVectorizer;
+import com.example.wms.admin.security.GatewayUserContextInterceptor;
 import com.example.wms.admin.service.KnowledgeService;
 import com.example.wms.admin.view.dto.KnowledgeChunkQuery;
 import com.example.wms.admin.view.dto.KnowledgeChunkView;
@@ -24,6 +26,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.test.web.client.TestRestTemplate;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import reactor.core.publisher.Flux;
@@ -65,6 +68,12 @@ class AiRagAskStreamControllerTest {
         @Bean
         ChatModel fakeChatModel() {
             return new FakeChatModel();
+        }
+
+        @Bean
+        @Primary
+        TestAuthServiceClient testAuthServiceClient() {
+            return new TestAuthServiceClient();
         }
     }
 
@@ -113,11 +122,14 @@ class AiRagAskStreamControllerTest {
     private KnowledgeService knowledgeService;
     @Autowired
     private FakeVectorStore fakeVectorStore;
+    @Autowired
+    private TestAuthServiceClient authServiceClient;
 
     private String adminToken;
 
     @BeforeEach
     void setUp() {
+        authServiceClient.setContext(new AuthContextResponse(1L, "admin", "WMS", List.of("ADMIN"), List.of("ai-rag:ask")));
         fakeVectorStore.canned = List.of();
         adminToken = login("admin", "admin123");
     }
@@ -219,6 +231,10 @@ class AiRagAskStreamControllerTest {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url("/ai/rag/ask")))
                 .header("Authorization", "Bearer " + adminToken)
+                .header(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token")
+                .header(GatewayUserContextInterceptor.HEADER_USER_ID, "1")
+                .header(GatewayUserContextInterceptor.HEADER_USERNAME, "admin")
+                .header(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "test-token-id")
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(15))
                 .POST(HttpRequest.BodyPublishers.ofString("{\"question\":\"" + question + "\",\"topK\":3}"))
@@ -268,6 +284,10 @@ class AiRagAskStreamControllerTest {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url("/ai/rag/ask/stream")))
                 .header("Authorization", "Bearer " + adminToken)
+                .header(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token")
+                .header(GatewayUserContextInterceptor.HEADER_USER_ID, "1")
+                .header(GatewayUserContextInterceptor.HEADER_USERNAME, "admin")
+                .header(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "test-token-id")
                 .header("Content-Type", "application/json")
                 .timeout(Duration.ofSeconds(15))
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
@@ -286,6 +306,6 @@ class AiRagAskStreamControllerTest {
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + "/api" + path;
+        return "http://localhost:" + port + "/wms" + path;
     }
 }

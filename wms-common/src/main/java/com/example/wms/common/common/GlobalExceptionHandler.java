@@ -28,6 +28,12 @@ public class GlobalExceptionHandler {
         return ApiResponse.fail(403, ex.getMessage());
     }
 
+    @ExceptionHandler(ServiceUnavailableException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ApiResponse<Void> handleServiceUnavailableException(ServiceUnavailableException ex) {
+        return ApiResponse.fail(503, ex.getMessage());
+    }
+
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidationException(MethodArgumentNotValidException ex) {

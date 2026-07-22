@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 @RestController
 @RequestMapping("/auth")
+@Deprecated(forRemoval = false)
 public class AuthController {
 
     private final AuthService authService;
@@ -29,6 +30,7 @@ public class AuthController {
             module = "认证",
             bizNo = "#request.username()"
     )
+    @Deprecated(forRemoval = false)
     public ApiResponse<LoginResponse> login(@Valid @RequestBody LoginRequest request) {
         return ApiResponse.ok(authService.login(request));
     }
