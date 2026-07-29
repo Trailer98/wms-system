@@ -28,6 +28,7 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/users")
+@Deprecated(forRemoval = false)
 public class SysUserController {
 
     private final SysUserService sysUserService;

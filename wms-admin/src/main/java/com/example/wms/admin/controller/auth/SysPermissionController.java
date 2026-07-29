@@ -13,6 +13,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/permissions")
+@Deprecated(forRemoval = false)
 public class SysPermissionController {
 
     private final SysPermissionService sysPermissionService;

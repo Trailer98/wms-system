@@ -33,3 +33,8 @@ gateway:
 auth-service:
   base-url: http://127.0.0.1:8081/auth
   application-code: WMS
+
+wms:
+  auth:
+    local-login-enabled: true
+    legacy-admin-enabled: true

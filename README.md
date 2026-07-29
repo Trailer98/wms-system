@@ -1,6 +1,6 @@
 # WMS 后端启动说明
 
-这是 WMS（仓储管理系统）后端服务，Spring Boot 3 单体应用。默认 context-path 为 `/api`，默认端口 `8081`（见 [启动前置条件](#2-启动前置条件) 中的配置来源说明）。
+这是 WMS（仓储管理系统）后端服务，Spring Boot 3 单体应用。默认 context-path 为 `/wms`，dev 端口为 `8083`（见 [启动前置条件](#2-启动前置条件) 中的配置来源说明）。
 
 > 技术栈、模块划分、业务功能等背景说明见文末 [附录：技术栈说明](#10-附录技术栈说明)。本文重点是"如何在本地把它跑起来"。
 
@@ -96,15 +96,15 @@ export DEEPSEEK_API_KEY=your_api_key_here
 
 | 文件 | profile | 说明 |
 |---|---|---|
-| `application.yml` | 无（基础配置，所有 profile 共用） | `server.servlet.context-path=/api`；`spring.profiles.default=dev`；`spring.profiles.group.dev=[ai]`；Flyway 通用配置（`enabled=true`、`locations=classpath:db/migration`） |
-| `application-dev.yml` | `dev`（**默认激活**） | `wms_system` 库连接信息、`server.port=8081`、`flyway.baseline-on-migrate=true` |
+| `application.yml` | 无（基础配置，所有 profile 共用） | `server.servlet.context-path=/wms`；`spring.profiles.default=dev`；`spring.profiles.group.dev=[ai]`；Flyway 通用配置（`enabled=true`、`locations=classpath:db/migration`） |
+| `application-dev.yml` | `dev`（**默认激活**） | `wms_system` 库连接信息、`server.port=8083`、`flyway.baseline-on-migrate=true` |
 | `application-ai.yml` | `ai`（随 `dev` 自动激活） | pgvector 数据源、DeepSeek/Ollama 模型配置、RAG 参数（`top-k=3`、`similarity-threshold=0.65`） |
 | `application-verify.yml` | `verify` | 指向独立的 `wms_flyway_verify` 库，`baseline-on-migrate=false`，用于验证全新库上 Flyway 从 V1 开始的完整迁移 |
 | `wms-admin/src/test/resources/application-test.yml` | `test`（仅测试 classpath，不打包进正式 jar） | 指向 `wms_system_test`，并显式关闭 `spring.ai.model.chat/embedding`，避免测试因缺少 DeepSeek Key 而失败 |
 
 - **不指定任何参数直接启动 = `dev` profile**（因为是 `spring.profiles.default`），同时自动附带 `ai` profile。
 - 本地日常开发推荐直接使用默认（`dev`），只需保证第 2 节提到的 `DEEPSEEK_API_KEY` 占位值已设置。
-- 切换 profile 用 `--spring.profiles.active=xxx`（命令行）或 `-Dspring-boot.run.profiles=xxx`（`spring-boot:run` 插件参数），例如切到 `verify` 验证全新库迁移；注意 `verify` 不属于 `dev` 组，不会自动带上 `ai`，也不会有 `server.port=8081`（会退回 Spring Boot 默认端口 8080）。
+- 切换 profile 用 `--spring.profiles.active=xxx`（命令行）或 `-Dspring-boot.run.profiles=xxx`（`spring-boot:run` 插件参数），例如切到 `verify` 验证全新库迁移；注意 `verify` 不属于 `dev` 组，不会自动带上 `ai`，也不会有 `server.port=8083`（会退回 Spring Boot 默认端口 8080）。
 
 ## 6. 编译与启动
 
@@ -135,22 +135,17 @@ java -jar wms-admin/target/wms-admin-0.0.1-SNAPSHOT.jar --spring.profiles.active
 
 ## 7. 启动成功验证
 
-- 服务地址：`http://localhost:8081/api`（端口来自 `application-dev.yml`，context-path 来自 `application.yml`）
-- Knife4j 接口文档：`http://localhost:8081/api/doc.html`（`WebMvcConfig` 中该路径被排除在登录校验之外，说明它挂在 context-path 下）
-- Actuator 健康检查：`http://localhost:8081/api/actuator/health`（`management.endpoints.web.exposure.include: health,info,metrics`，且 `AuthInterceptor` 排除了 `/actuator/**`）
-- 登录接口验证：
+- WMS 直连地址：`http://localhost:8083/wms`（端口来自 `application-dev.yml`，context-path 来自 `application.yml`）
+- Gateway 对外业务地址：`/api/wms/**`
+- 前端统一登录入口：`/api/auth/login`（由 gateway-service 转发到 auth-service）
+- WMS 本地 `/auth/login` 已废弃，默认返回提示：`WMS local login is deprecated. Please use auth-service login via gateway.`
+- WMS 直连请求必须携带 `X-Gateway-Token`，否则返回 401。
 
-```bash
-curl -X POST http://localhost:8081/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"admin123"}'
-```
+当前认证链路见 [`docs/auth-migration.md`](docs/auth-migration.md)。
 
-返回 JWT 说明后端与数据库均已就绪。
+## 8. 旧默认账号
 
-## 8. 默认账号
-
-已确认（`db/migration/V2__system_base_data.sql`）：
+以下账号来自旧 WMS 本地 RBAC 初始化数据，仅作为历史数据和回滚参考；当前登录、角色、权限以 auth-service 的 `auth_user` / `auth_role` / `auth_permission` 为准。
 
 - 用户名：`admin`
 - 初始密码：`admin123`（迁移脚本注释：`password_hash` 是该密码的 Hutool BCrypt 哈希）
@@ -198,13 +193,13 @@ curl -X POST http://localhost:8081/api/auth/login \
 - 可能原因：默认 `dev` profile 自动带上 `ai` profile（见第 2、5 节），但 `DEEPSEEK_API_KEY` 环境变量未设置
 - 处理：`export DEEPSEEK_API_KEY=placeholder`（不使用 AI 功能时占位即可）后重新启动
 
-**8. 8081 端口被占用**
-- 排查：`lsof -i:8081` 或 `netstat -ano | grep 8081`
+**8. 8083 端口被占用**
+- 排查：`lsof -i:8083` 或 `netstat -ano | grep 8083`
 - 处理：结束占用进程，或用 `--server.port=xxxx` 临时改用其他端口启动（注意前端 `vite.config.js` 的代理目标也要同步改）
 
 **9. 前端请求 404**
-- 可能原因：前端把接口路径拼成了不带 `/api` 前缀的地址
-- 处理：确认后端 `context-path=/api`，所有接口实际路径都在 `/api` 之下（如 `/api/auth/login`）
+- 可能原因：前端没有通过 Gateway 访问，或路径没有使用 `/api/auth/**`、`/api/wms/**`
+- 处理：登录走 `/api/auth/login`；WMS 业务接口走 `/api/wms/**`；WMS 服务自身直连 context-path 是 `/wms`
 
 ## 10. 附录：技术栈说明
 
@@ -214,7 +209,7 @@ curl -X POST http://localhost:8081/api/auth/login \
 - **数据库**：MySQL（主库）+ PostgreSQL/pgvector（AI 知识库向量索引，非业务主库）
 - **数据库版本管理**：Flyway（`db/migration/V1~V9`）
 - **API 文档**：springdoc-openapi + Knife4j 4.5.0
-- **鉴权**：自研 JWT + RBAC（Hutool JWT/BCrypt），自定义 `@RequiresPermission` 注解 + AOP 切面，未使用 Spring Security
+- **鉴权**：gateway-service 校验 auth-service token，WMS 校验 `X-Gateway-Token` 并调用 auth-service `/auth/context?applicationCode=WMS` 获取权限上下文，继续使用 `@RequiresPermission` + AOP 切面；旧 WMS 本地 JWT/RBAC 代码保留为 deprecated 回滚路径，未使用 Spring Security
 - **AI / RAG**：Spring AI 1.0.3，DeepSeek Chat（问答生成）+ Ollama（本地 embedding）+ PgVectorStore（向量检索），支持 SSE 流式问答
 - **其他**：Hutool、Lombok、Jackson（东八区时区）、HikariCP（双数据源）
 - 未引入消息队列、多租户；属于单体、单数据库、以同步调用为主的架构（仅操作日志异步落库、AI 问答走 SSE 流式）

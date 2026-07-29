@@ -26,6 +26,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/roles")
+@Deprecated(forRemoval = false)
 public class SysRoleController {
 
     private final SysRoleService sysRoleService;

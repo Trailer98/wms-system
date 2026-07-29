@@ -73,13 +73,24 @@ knife4j:
 
 gateway:
   # Required for direct WMS access protection. Configure the same value in gateway-service forwarding.
-  internal-token: local-dev-gateway-token
+  internal-token: ${GATEWAY_INTERNAL_TOKEN:}
 
 auth-service:
   base-url: ${AUTH_SERVICE_BASE_URL:http://127.0.0.1:8081/auth}
   application-code: WMS
 
 wms:
+  auth:
+    # Deprecated rollback switches only. The default authentication path is Gateway headers plus
+    # auth-service /auth/context; do not enable these for normal deployments.
+    local-login-enabled: false
+    local-jwt-enabled: false
+    legacy-admin-enabled: false
+  jwt:
+    # Deprecated: local WMS JWTs are no longer trusted for protected requests. Kept only so the
+    # legacy JwtTokenService can be re-enabled during rollback without code changes.
+    secret: ${WMS_JWT_SECRET:wms-system-default-jwt-secret-please-change}
+    expire-minutes: ${WMS_JWT_EXPIRE_MINUTES:720}
   ai:
     system-prompt: >
       你是一个 WMS（仓储管理系统）智能助手。

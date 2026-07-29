@@ -4,6 +4,7 @@ import com.example.wms.common.common.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -22,6 +23,7 @@ import java.io.IOException;
  */
 @Deprecated(forRemoval = false)
 @Component
+@ConditionalOnProperty(prefix = "wms.auth", name = "local-jwt-enabled", havingValue = "true")
 public class AuthInterceptor implements HandlerInterceptor {
 
     private static final String AUTH_HEADER = "Authorization";
