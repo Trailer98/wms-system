@@ -1,4 +1,4 @@
-package com.example.wms.admin.view.dto;
+package com.example.wms.admin.view.dto.base.customer;
 
 import com.example.wms.admin.model.entity.Customer;
 

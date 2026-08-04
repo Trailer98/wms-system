@@ -73,7 +73,7 @@ knife4j:
 
 gateway:
   # Required for direct WMS access protection. Configure the same value in gateway-service forwarding.
-  internal-token: ${GATEWAY_INTERNAL_TOKEN:}
+  internal-token: ${GATEWAY_INTERNAL_TOKEN:local-dev-gateway-token}
 
 auth-service:
   base-url: ${AUTH_SERVICE_BASE_URL:http://127.0.0.1:8081/auth}

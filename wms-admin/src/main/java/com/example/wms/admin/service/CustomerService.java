@@ -1,16 +1,16 @@
 package com.example.wms.admin.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.core.toolkit.Wrappers;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.example.wms.admin.view.dto.base.customer.*;
 import com.example.wms.common.common.BusinessException;
 import com.example.wms.admin.model.entity.Customer;
 import com.example.wms.admin.model.mapper.CustomerMapper;
-import com.example.wms.admin.view.dto.CreateCustomerRequest;
-import com.example.wms.admin.view.dto.CustomerQuery;
-import com.example.wms.admin.view.dto.CustomerResponse;
 import com.example.wms.common.common.PageResponse;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.util.ObjectUtils;
 import org.springframework.util.StringUtils;
 
 @Service
@@ -38,6 +38,31 @@ public class CustomerService {
         return CustomerResponse.from(customer);
     }
 
+    @Transactional
+    public CustomerResponse editCustomer(UpdateCustomerRequest request) {
+        LambdaUpdateWrapper<Customer> updateWrapper = Wrappers.lambdaUpdate(Customer.class)
+                .eq(Customer::getId, request.id())
+                .set(Customer::getName, request.name())
+                .set(Customer::getAddress, request.address())
+                .set(Customer::getContactName, request.contactName())
+                .set(Customer::getContactPhone, request.contactPhone());
+        customerMapper.update(updateWrapper);
+        return CustomerResponse.from(getById(request.id()));
+    }
+
+    @Transactional
+    public void changeEnabled(UpdateEnabledRequest request) {
+        LambdaUpdateWrapper<Customer> updateWrapper = Wrappers.lambdaUpdate(Customer.class)
+                .eq(Customer::getId, request.id())
+                .set(Customer::isEnabled, request.enabled());
+        customerMapper.update(updateWrapper);
+    }
+
+    @Transactional
+    public void deleteCustomer(Long id) {
+        customerMapper.deleteById(id);
+    }
+
     @Transactional(readOnly = true)
     public PageResponse<CustomerResponse> search(CustomerQuery query) {
         Page<Customer> page = customerMapper.selectPage(
@@ -45,6 +70,7 @@ public class CustomerService {
                 Wrappers.lambdaQuery(Customer.class)
                         .like(StringUtils.hasText(query.getCode()), Customer::getCode, query.getCode())
                         .like(StringUtils.hasText(query.getName()), Customer::getName, query.getName())
+                        .eq(!ObjectUtils.isEmpty(query.getEnabled()), Customer::isEnabled, query.getEnabled())
                         .orderByAsc(Customer::getCode)
         );
 

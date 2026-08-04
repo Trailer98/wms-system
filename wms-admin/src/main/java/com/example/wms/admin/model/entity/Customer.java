@@ -1,6 +1,5 @@
 package com.example.wms.admin.model.entity;
 
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -19,7 +18,6 @@ public class Customer {
     private String contactName;
     private String contactPhone;
     private String address;
-    @TableLogic(value = "1", delval = "0")
     private boolean enabled = true;
     private Instant createdAt;
     private Instant updatedAt;

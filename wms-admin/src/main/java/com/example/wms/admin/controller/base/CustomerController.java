@@ -2,18 +2,16 @@ package com.example.wms.admin.controller.base;
 
 import com.example.wms.admin.annotation.RequiresPermission;
 import com.example.wms.admin.annotation.SysOperationLog;
+import com.example.wms.admin.view.dto.base.customer.UpdateCustomerRequest;
+import com.example.wms.admin.view.dto.base.customer.UpdateEnabledRequest;
 import com.example.wms.common.common.ApiResponse;
 import com.example.wms.admin.service.CustomerService;
-import com.example.wms.admin.view.dto.CreateCustomerRequest;
-import com.example.wms.admin.view.dto.CustomerQuery;
-import com.example.wms.admin.view.dto.CustomerResponse;
+import com.example.wms.admin.view.dto.base.customer.CreateCustomerRequest;
+import com.example.wms.admin.view.dto.base.customer.CustomerQuery;
+import com.example.wms.admin.view.dto.base.customer.CustomerResponse;
 import com.example.wms.common.common.PageResponse;
 import jakarta.validation.Valid;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/customers")
@@ -36,5 +34,28 @@ public class CustomerController {
     @RequiresPermission("customer:view")
     public ApiResponse<PageResponse<CustomerResponse>> search(CustomerQuery query) {
         return ApiResponse.ok(customerService.search(query));
+    }
+
+    @PutMapping
+    @RequiresPermission("customer:update")
+    @SysOperationLog(operationType = "修改客户信息", content = "修改客户信息", module = "基础资料")
+    public ApiResponse<CustomerResponse> getCustomerById(@Valid @RequestBody UpdateCustomerRequest request) {
+        return ApiResponse.ok(customerService.editCustomer(request));
+    }
+
+    @PatchMapping
+    @RequiresPermission("customer:disable")
+    @SysOperationLog(operationType = "启停客户", content = "启停客户", module = "基础资料")
+    public ApiResponse<Void> changeEnabled(@Valid @RequestBody UpdateEnabledRequest request) {
+        customerService.changeEnabled(request);
+        return ApiResponse.ok();
+    }
+
+    @DeleteMapping("/{id}")
+    @RequiresPermission("customer:delete")
+    @SysOperationLog(operationType = "删除客户", content = "删除客户", module = "基础资料")
+    public ApiResponse<Void> deleteCustomer(@PathVariable Long id) {
+        customerService.deleteCustomer(id);
+        return ApiResponse.ok();
     }
 }
