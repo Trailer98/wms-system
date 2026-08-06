@@ -1,6 +1,11 @@
+server:
+  port: 8083
+  servlet:
+    context-path: /wms
+
 spring:
   application:
-    name: wms-admin
+    name: wms-service
 
   cloud:
     nacos:
@@ -10,14 +15,22 @@ spring:
         username: nacos
         password: nacos
         service: ${spring.application.name}
-        namespace: public
+        namespace: da3fc902-1db6-43e2-afc5-314500fcbf14
         group: DEFAULT_GROUP
+      config:
+        server-addr: 127.0.0.1:8848
+        username: nacos
+        password: nacos
+        namespace: da3fc902-1db6-43e2-afc5-314500fcbf14
+        group: WMS_GROUP
+
+  config:
+    import:
+      - nacos:wms-service.yaml?group=WMS_GROUP&refreshEnabled=true
+      - nacos:wms-service-dev.yaml?group=WMS_GROUP&refreshEnabled=false
 
   profiles:
     default: dev
-    group:
-      dev:
-        - ai
   # Schema is now versioned by Flyway (classpath:db/migration). The old schema.sql/data.sql auto-run
   # is disabled — mode:never — so Spring Boot never executes ad-hoc init SQL again.
   sql:
@@ -34,6 +47,9 @@ spring:
     out-of-order: false
     # clean is a destructive "drop everything" operation — permanently disabled so it can never run.
     clean-disabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    baseline-description: Dev existing schema baseline
     # NOTE: baseline-on-migrate / baseline-version are intentionally NOT set here. Adopting an
     # already-populated database (skipping V1) is a per-environment decision, enabled only in
     # application-dev.yml. An empty database runs V1/V2/V3 from scratch under any profile. Production
@@ -41,21 +57,11 @@ spring:
   jackson:
     time-zone: Asia/Tokyo
 
-# Served under /wms in every environment. Gateway can expose this service under its external route
-# (for example /api/wms) while WMS keeps one stable internal servlet context.
-server:
-  servlet:
-    context-path: /wms
-
 management:
   endpoints:
     web:
       exposure:
         include: health,info,metrics
-
-logging:
-  level:
-    com.example.wms: INFO
 
 mybatis-plus:
   global-config:
@@ -91,9 +97,3 @@ wms:
     # legacy JwtTokenService can be re-enabled during rollback without code changes.
     secret: ${WMS_JWT_SECRET:wms-system-default-jwt-secret-please-change}
     expire-minutes: ${WMS_JWT_EXPIRE_MINUTES:720}
-  ai:
-    system-prompt: >
-      你是一个 WMS（仓储管理系统）智能助手。
-      回答时优先使用简洁中文。
-      如果用户没有提供足够的仓库、SKU、库存或订单上下文，先指出缺失信息，再给出建议。
-      不要虚构系统实时数据，除非用户已经在问题中明确提供。
