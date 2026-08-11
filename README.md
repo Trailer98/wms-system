@@ -18,11 +18,11 @@
 | Maven | 建议 3.9+（未见 `mvnw` 挂在 reactor 根目录，请使用本机已安装的 `mvn`） | 环境要求，无 wrapper 锁定 |
 | MySQL | 建议 8.x（驱动为 `mysql-connector-j`，未见版本强约束） | `wms-admin/pom.xml` |
 | PostgreSQL + pgvector | 建议使用项目自带镜像 `pgvector/pgvector:0.8.5-pg17` | `docker-compose-ai.yml` |
-| Ollama（可选，AI 向量化需要） | 需能提供 `bge-m3` 模型 | `application-ai.yml` |
-| DeepSeek API Key（**必须设置环境变量，但可选是否使用真实 Key**，见下方说明） | - | `application-ai.yml` |
+| Ollama（可选，AI 向量化需要） | 需能提供 `bge-m3` 模型 | Nacos `wms-service.yaml`（`WMS_GROUP`）——本地已不存在 `application-ai.yml` 这个文件，见第 5 节说明 |
+| DeepSeek API Key（**必须设置环境变量，但可选是否使用真实 Key**，见下方说明） | - | 同上 |
 
 **重要：不使用 AI 功能也必须设置 `DEEPSEEK_API_KEY` 环境变量。**
-`application.yml` 中 `spring.profiles.group.dev: [ai]` 表示默认的 `dev` profile 会自动一并激活 `ai` profile；`application-ai.yml` 里 `spring.ai.deepseek.api-key: ${DEEPSEEK_API_KEY}` 没有默认值。`wms-admin/src/test/resources/application-test.yml` 的注释明确写到：如果 `ai` profile 激活但没有关闭 chat/embedding 模型，"the DeepSeek model fails the whole context with 'API key must be set'"。也就是说：**用默认方式启动（不额外指定 profile）时，只要 `DEEPSEEK_API_KEY` 未设置，应用会在启动阶段直接失败**，即使你完全不打算用 AI/RAG 功能。
+`spring.ai.deepseek.api-key: ${DEEPSEEK_API_KEY}`（Nacos `wms-service.yaml`）没有默认值。`wms-admin/src/test/resources/application-test.yml` 的注释明确写到：如果 `ai` Spring profile 激活但没有关闭 chat/embedding 模型，"the DeepSeek model fails the whole context with 'API key must be set'"。⚠️ **2026-08-10 核实更新**：本仓库当前的 `wms-admin/src/main/resources/application.yml` 里已经**找不到**任何自动激活 `ai` profile 的声明（旧版的 `spring.profiles.group.dev: [ai]` 已不存在，本地/Nacos 配置里也没有等价的东西），`ai` profile 具体如何被激活未能从仓库内证据确认——但 `AiVectorStoreConfig` 仍然标注 `@Profile("ai")`，只要这个 profile 处于激活状态，上述"启动即失败"的结论就仍然成立，**建议启动前统一设置 `DEEPSEEK_API_KEY` 占位值，不要假设默认不激活 AI**。
 
 - 不想用 AI 功能：随便设置一个占位值即可让应用正常启动，例如 `export DEEPSEEK_API_KEY=placeholder`；只有真正调用 RAG 问答接口时才会因为 Key 无效而报错。
 - 想用 AI 功能：需要一个真实有效的 DeepSeek Key，并额外准备 Ollama + PostgreSQL/pgvector（见第 4 节）。
@@ -32,8 +32,8 @@
 ### MySQL（业务主库，必需）
 
 - 用途：全部业务数据的唯一真源
-- 数据库名：`wms_system`（来自 `application-dev.yml` 的 `spring.datasource.url`，这是默认 `dev` profile 使用的库）
-- 用户名 / 密码：`root` / `root123456`（`application-dev.yml` 中的本地开发默认值；如果你修改过这个文件，请以你本地实际配置为准）
+- 数据库名：`wms_system`（`spring.datasource.url`，**2026-08-10 已从 Nacos 核实**：这项配置不在本仓库任何文件里，来自配置中心 dataId `wms-service-dev.yaml`，group `WMS_GROUP`，见第 5 节）
+- 用户名 / 密码：`root` / `root123456`（同上，Nacos `wms-service-dev.yaml` 里的本地开发默认值；如果 Nacos 上的值被改过，请以 Nacos 控制台实际配置为准，不要以为改本仓库某个文件就能生效）
 - 初始化方式：**Flyway 自动执行**，无需手工建表。首次连接一个全新空库时，Flyway 会按顺序执行 `wms-admin/src/main/resources/db/migration/V1__init_schema.sql` 到 `V9__add_developer_role.sql`（建表 + RBAC 基础数据 + 字典数据 + AI 知识库表 + 默认账号，见第 8 节）
 
 创建空库：
@@ -42,7 +42,7 @@
 CREATE DATABASE IF NOT EXISTS wms_system DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 ```
 
-> 如果你本地已有一个由旧版 `schema.sql` 建好的非空 `wms_system` 库（历史遗留，见 `docs/legacy-sql/schema.sql`），`dev` profile 已经配置了 `flyway.baseline-on-migrate=true`（版本号 1），Flyway 会自动把该库基线到 V1、只执行 V2 之后的脚本。更完整的迁移/基线策略说明见 [`docs/database-migration.md`](docs/database-migration.md)。
+> 如果你本地已有一个由旧版 `schema.sql` 建好的非空 `wms_system` 库（历史遗留，见 `docs/legacy-sql/schema.sql`），`application.yml` 里已经配置了 `flyway.baseline-on-migrate=true`（版本号 1，**这条现在不区分 profile，任何启动方式都生效**，不再是"`dev` profile 专属"），Flyway 会自动把该库基线到 V1、只执行 V2 之后的脚本。更完整的迁移/基线策略说明见 [`docs/database-migration.md`](docs/database-migration.md)。
 
 ### PostgreSQL + pgvector（AI 知识库向量索引，仅 AI/RAG 功能需要）
 
@@ -64,14 +64,14 @@ CREATE DATABASE wms_ai;
 CREATE EXTENSION IF NOT EXISTS vector;
 ```
 
-> **需要本地确认的差异**：`docker/pgvector/init/01-init.sql` 里手工建表时向量列是 `vector(1536)`，而后端 `AiVectorStoreConfig` 中配置的向量维度是 `1024`（对应 `bge-m3` 模型的输出维度），且该配置 `initializeSchema(false)` 表示 Spring AI 不会自动建表或改列。这两者维度不一致，实际以哪个为准、是否需要手工调整表结构，请在启用 AI 功能前本地核实，不要假设开箱即用。
+> **已修复（2026-08-10）**：`docker/pgvector/init/01-init.sql` 里手工建表的向量列曾经是 `vector(1536)`，与后端 `AiVectorStoreConfig` 配置的 `1024`（对应 `bge-m3` 模型输出维度）不一致；且该配置 `initializeSchema(false)` 表示 Spring AI 不会自动建表或改列。现已把这份建表脚本改成 `vector(1024)`，与代码一致；核实时发现当前运行中的 `wms-pgvector` 容器里 `vector_store` 表实际列类型本来就是 `vector(1024)`（说明该表不是靠这份脚本建的），本次只是让脚本文件本身和实际情况对上，不需要动现有表结构。
 
 ## 4. AI 相关前置条件（仅 AI/RAG 功能需要）
 
 ### Ollama（本地 embedding）
 
-- 模型：`bge-m3`（`application-ai.yml` 中 `spring.ai.ollama.embedding.model`）
-- 默认地址：`http://localhost:11434`（`application-ai.yml` 中 `spring.ai.ollama.base-url`）
+- 模型：`bge-m3`（Nacos `wms-service.yaml`/`WMS_GROUP` 中 `spring.ai.ollama.embedding.model`，本地不存在 `application-ai.yml` 文件，见第 5 节）
+- 默认地址：`http://localhost:11434`（同上，`spring.ai.ollama.base-url`）
 
 ```bash
 ollama serve
@@ -81,8 +81,8 @@ ollama list
 
 ### DeepSeek（RAG 问答生成）
 
-- 通过环境变量 `DEEPSEEK_API_KEY` 注入（`application-ai.yml` 中 `spring.ai.deepseek.api-key: ${DEEPSEEK_API_KEY}`，无默认值）
-- 模型固定为 `deepseek-v4-flash`（`application-ai.yml` 中硬编码，不通过环境变量配置）
+- 通过环境变量 `DEEPSEEK_API_KEY` 注入（Nacos `wms-service.yaml`/`WMS_GROUP` 中 `spring.ai.deepseek.api-key: ${DEEPSEEK_API_KEY}`，无默认值）
+- 模型固定为 `deepseek-v4-flash`（同上，写死在 Nacos 配置里，不通过环境变量配置）
 
 ```bash
 export DEEPSEEK_API_KEY=your_api_key_here
@@ -92,19 +92,25 @@ export DEEPSEEK_API_KEY=your_api_key_here
 
 ## 5. 配置文件说明
 
-实际存在的 profile 配置文件（均在 `wms-admin/src/main/resources/`，另有仅测试可见的一份）：
+> ⚠️ **本节已于 2026-08-10 重写**：旧版本描述了 `application-dev.yml`/`application-ai.yml`/`application-verify.yml` 等 profile 文件，这些文件在当前仓库里**都不存在**。项目已经历一次 Nacos 化改造，运行配置改为"仓库里只保留一份 `application.yml`，其余环境相关配置放进 Nacos 配置中心"，下面按当前真实情况重写。
 
-| 文件 | profile | 说明 |
-|---|---|---|
-| `application.yml` | 无（基础配置，所有 profile 共用） | `server.servlet.context-path=/wms`；`spring.profiles.default=dev`；`spring.profiles.group.dev=[ai]`；Flyway 通用配置（`enabled=true`、`locations=classpath:db/migration`） |
-| `application-dev.yml` | `dev`（**默认激活**） | `wms_system` 库连接信息、`server.port=8083`、`flyway.baseline-on-migrate=true` |
-| `application-ai.yml` | `ai`（随 `dev` 自动激活） | pgvector 数据源、DeepSeek/Ollama 模型配置、RAG 参数（`top-k=3`、`similarity-threshold=0.65`） |
-| `application-verify.yml` | `verify` | 指向独立的 `wms_flyway_verify` 库，`baseline-on-migrate=false`，用于验证全新库上 Flyway 从 V1 开始的完整迁移 |
-| `wms-admin/src/test/resources/application-test.yml` | `test`（仅测试 classpath，不打包进正式 jar） | 指向 `wms_system_test`，并显式关闭 `spring.ai.model.chat/embedding`，避免测试因缺少 DeepSeek Key 而失败 |
+`wms-admin/src/main/resources/` 目录下实际只有一个配置文件：`application.yml`。它里面固定写了以下内容：
 
-- **不指定任何参数直接启动 = `dev` profile**（因为是 `spring.profiles.default`），同时自动附带 `ai` profile。
-- 本地日常开发推荐直接使用默认（`dev`），只需保证第 2 节提到的 `DEEPSEEK_API_KEY` 占位值已设置。
-- 切换 profile 用 `--spring.profiles.active=xxx`（命令行）或 `-Dspring-boot.run.profiles=xxx`（`spring-boot:run` 插件参数），例如切到 `verify` 验证全新库迁移；注意 `verify` 不属于 `dev` 组，不会自动带上 `ai`，也不会有 `server.port=8083`（会退回 Spring Boot 默认端口 8080）。
+- `server.port: 8083`、`server.servlet.context-path: /wms`
+- `spring.profiles.default: dev`
+- `spring.sql.init.mode: never`（Flyway 接管 schema，不再用 `schema.sql`）
+- Flyway 通用配置（`enabled: true`、`locations: classpath:db/migration`、`clean-disabled: true`、`baseline-on-migrate: true`、`baseline-version: 1`）
+- 两条 `spring.config.import`，把真正的环境相关配置从 Nacos 拉进来：
+  - `nacos:wms-service.yaml?group=WMS_GROUP` —— AI/RAG 相关参数（`app.ai.rag.top-k`/`similarity-threshold`、`spring.ai.deepseek.*`、`spring.ai.ollama.*`、`wms.ai.system-prompt`）
+  - `nacos:wms-service-dev.yaml?group=WMS_GROUP` —— MySQL 主库连接串（`wms_system`）、pgvector 连接串（`wms_ai`）
+
+**这两条 `spring.config.import` 不是按 Spring profile 区分加载的**——它们写在没有 profile 归属的 `application.yml` 里，只要应用启动就会被导入，与你传不传 `--spring.profiles.active` 无关。也就是说，当前仓库**没有**"dev/ai/verify/test 四套 profile 文件各自生效"这种机制了，只有一份配置 + 一份固定从 Nacos 拉取的补充配置。
+
+以下两点在 2026-08-10 核实时**未能从仓库或 Nacos 确认**，标记为待确认，不要假设成立：
+- Spring 的 `ai` profile（`AiVectorStoreConfig` 上 `@Profile("ai")` 声明）具体靠什么被激活——本仓库和 Nacos 里都没找到类似旧版 `spring.profiles.group.dev=[ai]` 的声明。如果你本地/CI 启动脚本里显式传了 `--spring.profiles.active=dev,ai` 之类的参数，那是在仓库之外维护的，请自行确认。
+- `verify`/`test` 相关的独立库配置（旧版提到的 `wms_flyway_verify`）目前只在 `wms-admin/src/test/resources/application-test.yml`（`wms_system_test`，仅测试 classpath）里能找到证据，仓库和 Nacos 里都没有找到面向 `verify` profile 的等价配置，`mvn test -Dspring-boot.run.profiles=verify` 这类命令当前效果未经验证。
+
+如果 Nacos 侧配置发生变化（比如换了 group、加了新的 dataId），以上内容会过期——需要重新连接 Nacos 核实，方法见 [`gateway-service/PROJECT_CONTEXT.md`](../gateway-service/PROJECT_CONTEXT.md) 里记录的查询步骤（同一个 Nacos 实例，只是 dataId/group 换成 `wms-service*.yaml`/`WMS_GROUP`）。
 
 ## 6. 编译与启动
 
@@ -135,7 +141,7 @@ java -jar wms-admin/target/wms-admin-0.0.1-SNAPSHOT.jar --spring.profiles.active
 
 ## 7. 启动成功验证
 
-- WMS 直连地址：`http://localhost:8083/wms`（端口来自 `application-dev.yml`，context-path 来自 `application.yml`）
+- WMS 直连地址：`http://localhost:8083/wms`（端口和 context-path 均来自仓库内唯一的 `application.yml`，不再有单独的 `application-dev.yml`，见第 5 节）
 - Gateway 对外业务地址：`/api/wms/**`
 - 前端统一登录入口：`/api/auth/login`（由 gateway-service 转发到 auth-service）
 - WMS 本地 `/auth/login` 已废弃，默认返回提示：`WMS local login is deprecated. Please use auth-service login via gateway.`
@@ -157,8 +163,8 @@ java -jar wms-admin/target/wms-admin-0.0.1-SNAPSHOT.jar --spring.profiles.active
 
 **1. MySQL 连接失败（`Communications link failure` / `Access denied`）**
 - 现象：启动时抛出数据源连接异常
-- 可能原因：MySQL 未启动、库不存在、账号密码与 `application-dev.yml` 不一致
-- 排查：确认 MySQL 进程存活、`wms_system` 库已创建、账号密码与 `application-dev.yml` 一致
+- 可能原因：MySQL 未启动、库不存在、账号密码与 Nacos `wms-service-dev.yaml`（`WMS_GROUP`）里配置的不一致
+- 排查：确认 MySQL 进程存活、`wms_system` 库已创建、账号密码与 Nacos 上的实际配置一致（不是本仓库某个文件）
 - 处理：先按第 3 节创建空库，或修正本地 MySQL 账号密码
 
 **2. Flyway migration 失败（`FlywayValidateException` / checksum 不一致）**

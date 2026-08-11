@@ -13,7 +13,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
-/** context-path is {@code /api}, so the effective paths are {@code /api/ai/rag/ask} and {@code /api/ai/rag/ask/stream}. */
+/**
+ * context-path is {@code /wms} (see {@code application.yml}), so the effective service-level paths are
+ * {@code /wms/ai/rag/ask} and {@code /wms/ai/rag/ask/stream}. Through the Gateway (external, `/api`-prefixed,
+ * {@code StripPrefix=1}) these are reachable at {@code /api/wms/ai/rag/ask} and {@code /api/wms/ai/rag/ask/stream}.
+ * Corrected 2026-08-10 — this comment previously said context-path was {@code /api}, which was wrong.
+ */
 @RestController
 @RequestMapping("/ai/rag")
 public class AiRagAskController {

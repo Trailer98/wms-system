@@ -15,17 +15,19 @@ mvn clean package -DskipTests
 mvn test
 
 # Run a single test class
-mvn test -pl wms-admin -Dtest=SpringAiTest
+mvn test -pl wms-admin -Dtest=AiRagAskServiceTest
 
 # Run a specific test method
-mvn test -pl wms-admin -Dtest=SpringAiTest#test
+mvn test -pl wms-admin -Dtest=AiRagAskServiceTest#test
 ```
 
-**Prerequisites:** MySQL must be running at `localhost:3306` with database `wms_system`, user `root`, password `root123456`. The schema is auto-applied on startup via `schema.sql` (`spring.sql.init.mode: always`).
+**Prerequisites:** MySQL must be running at `localhost:3306` with database `wms_system`. The connection string/credentials are **not** in this repo — they come from the Nacos config center (dataId `wms-service-dev.yaml`, group `WMS_GROUP`), imported unconditionally by `wms-admin/src/main/resources/application.yml` regardless of which Spring profile you run with. The schema is managed by **Flyway** (`db/migration/V1__init_schema.sql` … `V9__add_developer_role.sql`); the old `schema.sql`/`spring.sql.init.mode: always` mechanism this section used to describe is gone — `application.yml` now sets `spring.sql.init.mode: never` explicitly.
 
-The application starts on `http://localhost:8081/api`. API docs (Knife4j) are available at `http://localhost:8081/doc.html`.
+The application starts on `http://localhost:8083/wms` (not `8081`/`/api` — that was true before this service registered with Nacos and adopted the `/wms` context-path). API docs (Knife4j) are available at `http://localhost:8083/wms/doc.html`.
 
-**AI feature:** Set `DEEPSEEK_API_KEY` environment variable before starting if using the `/api/ai/chat` endpoint. `DEEPSEEK_MODEL` defaults to `deepseek-chat`.
+**AI feature:** RAG endpoints are `POST /wms/ai/rag/ask` and `POST /wms/ai/rag/ask/stream` (`AiRagAskController`), not `/api/ai/chat`. The chat model is DeepSeek `deepseek-v4-flash`, configured via Nacos (`wms-service.yaml`/`WMS_GROUP`, `spring.ai.deepseek.chat.model`) — it is **not** read from a `DEEPSEEK_MODEL` env var. `DEEPSEEK_API_KEY` is still required as an env var (`spring.ai.deepseek.api-key`).
+
+> Full, kept-current runtime/config/API details (incl. what actually lives in Nacos) are in [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — prefer that over hand-updating this section again.
 
 ## Architecture
 
@@ -69,9 +71,7 @@ aspect/          AOP (SysOperationAspect)
 
 ### Spring AI integration
 
-`WmsAiConfig` creates a `wmsChatClient` bean by applying the system prompt from `WmsAiProperties` (`wms.ai.system-prompt`) to a `ChatClient.Builder`. `AiChatService` injects `@Qualifier("wmsChatClient")` to use this configured client for all chat calls.
-
-The AI feature connects to DeepSeek's API via the Spring AI OpenAI adapter (`spring-ai-openai-spring-boot-starter`, version `1.0.0-M5` milestone). The Spring Milestones repository is declared in the root `pom.xml` because milestone artifacts are not on Maven Central.
+**This section previously described a `WmsAiConfig`/`wmsChatClient`/`AiChatService` design that no longer exists in the codebase** (verified 2026-08-10: no such classes anywhere under `wms-admin`). The current AI/RAG entry points are `controller/ai/AiRagAskController.java` (`/ai/rag/ask`, `/ai/rag/ask/stream`) and `controller/ai/KnowledgeController.java` (`/ai/knowledge/**`), backed by `service/AiRagAskService.java`; RAG retrieval parameters (`top-k`, `similarity-threshold`) bind from `config/RagProperties.java` (`app.ai.rag.*`, sourced from Nacos `wms-service.yaml`). The actual Spring AI version is `1.0.3` (`spring-ai-bom`), using `spring-ai-starter-model-deepseek` + `spring-ai-starter-model-ollama` + `spring-ai-pgvector-store` — not the `1.0.0-M5` OpenAI-adapter milestone this section used to describe. Do not trust the rest of this paragraph's specifics without re-checking the source; see [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) §5/§8 for what's currently confirmed.
 
 # Project Rules
 
@@ -99,3 +99,29 @@ The AI feature connects to DeepSeek's API via the Spring AI OpenAI adapter (`spr
 2. 为什么这样改
 3. 验证命令和结果
 4. 仍然存在的风险
+
+# Project Context Rules
+
+> These rules supplement everything above; they don't override or remove any pre-existing content in this file.
+
+Before performing project tasks:
+
+1. Read PROJECT_CONTEXT.md first.
+2. For cross-project tasks, read `/data/projects/wms-web-refactor/SYSTEM_CONTEXT.md`.
+3. Do not scan the whole repository by default.
+4. Use PROJECT_CONTEXT.md to locate relevant files first.
+5. Read source code when implementation details are required.
+6. Code is the final source of truth.
+7. After modifying code, determine whether PROJECT_CONTEXT.md needs to be updated.
+8. Update PROJECT_CONTEXT.md only when project navigation or important architectural/business facts changed.
+9. For cross-service architectural changes, also check:
+   - `/data/projects/auth-service/PROJECT_CONTEXT.md`
+   - `/data/projects/gateway-service/PROJECT_CONTEXT.md`
+   - `/data/projects/wms-web-refactor/SYSTEM_CONTEXT.md`
+10. If documentation conflicts with code: CODE IS SOURCE OF TRUTH. If the conflict involves explicit system architecture conventions (e.g. WMS's port isn't 8083 anymore, or it starts owning user/role/permission again for real), report the conflict before changing architecture.
+
+### Known legacy issues (confirmed when this doc was written — don't re-investigate from scratch)
+
+- 本文件上方的"Commands"/"Spring AI integration"两处过期内容**已于 2026-08-10 更正**（端口/context-path、schema 机制、AI 端点/模型来源、`WmsAiConfig` 等已不存在的类名引用）。"Module layout"/"Layering"/"Key design patterns" 几节未发现反例，未改动，但也未逐条重新验证，遇到不一致以代码为准。
+- 仓库内仍有一套完整的历史本地 RBAC 实现（`SysUser`/`SysRole`/`SysPermission` 相关代码），默认被拦截器/开关阻断，不要在其基础上继续开发，也不要把它当作"WMS 负责用户权限"的证据——详见 [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) 第 13 节。
+- WMS 数据源配置外置于 Nacos 配置中心，真实值已于 2026-08-10 核实并记录在 [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) 第 2 节（会随 Nacos 内容变化而过期，需要时重新查询而不是死记）。

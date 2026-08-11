@@ -4,10 +4,17 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.stereotype.Component;
 
 /**
- * Binds {@code app.ai.rag.*} (see application-ai.yml). Only loaded under the {@code ai} profile group,
- * so the field defaults below (matching the YAML values) are what's actually in effect under every
- * other profile (e.g. {@code test}) where that YAML file never loads — the properties bean still binds
- * successfully with these defaults rather than resolving to 0/0.0.
+ * Binds {@code app.ai.rag.*}.
+ *
+ * <p>Corrected 2026-08-10: this used to say the values came from a local {@code application-ai.yml},
+ * loaded only under an {@code ai} profile group. That file and that profile-group mechanism no longer
+ * exist in this repo. The current override values (matching the field defaults below) instead come from
+ * the Nacos config center (dataId {@code wms-service.yaml}, group {@code WMS_GROUP}), imported
+ * unconditionally by {@code application.yml} regardless of active Spring profile — see
+ * {@code PROJECT_CONTEXT.md} §11. Whether the {@code test} profile still avoids these Nacos-sourced
+ * values some other way (e.g. via {@code wms-admin/src/test/resources/application-test.yml}) was not
+ * re-verified when this comment was corrected; either way, the field defaults below remain the fallback
+ * if no override binds.
  */
 @Component
 @ConfigurationProperties(prefix = "app.ai.rag")
