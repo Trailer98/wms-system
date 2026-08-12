@@ -107,7 +107,7 @@ aspect/          AOP (SysOperationAspect)
 Before performing project tasks:
 
 1. Read PROJECT_CONTEXT.md first.
-2. For cross-project tasks, read `/data/projects/wms-web-refactor/SYSTEM_CONTEXT.md`.
+2. For cross-project tasks, read `/data/projects/SYSTEM_CONTEXT.md`.
 3. Do not scan the whole repository by default.
 4. Use PROJECT_CONTEXT.md to locate relevant files first.
 5. Read source code when implementation details are required.
@@ -117,7 +117,7 @@ Before performing project tasks:
 9. For cross-service architectural changes, also check:
    - `/data/projects/auth-service/PROJECT_CONTEXT.md`
    - `/data/projects/gateway-service/PROJECT_CONTEXT.md`
-   - `/data/projects/wms-web-refactor/SYSTEM_CONTEXT.md`
+   - `/data/projects/SYSTEM_CONTEXT.md`
 10. If documentation conflicts with code: CODE IS SOURCE OF TRUTH. If the conflict involves explicit system architecture conventions (e.g. WMS's port isn't 8083 anymore, or it starts owning user/role/permission again for real), report the conflict before changing architecture.
 
 ### Known legacy issues (confirmed when this doc was written — don't re-investigate from scratch)
