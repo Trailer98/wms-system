@@ -1,5 +1,6 @@
 package com.example.wms.admin;
 
+import com.example.wms.admin.config.GatewayInternalTokenProperties;
 import com.example.wms.admin.security.CurrentUser;
 import com.example.wms.admin.security.CurrentUserContext;
 import com.example.wms.admin.security.GatewayUserContextInterceptor;
@@ -16,8 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class GatewayUserContextInterceptorTest {
 
+    private static final String TEST_TOKEN = "test-gateway-token-not-a-real-secret";
+
     private final GatewayUserContextInterceptor interceptor =
-            new GatewayUserContextInterceptor(new ObjectMapper(), "test-gateway-token");
+            new GatewayUserContextInterceptor(new ObjectMapper(), new GatewayInternalTokenProperties(TEST_TOKEN));
 
     @AfterEach
     void tearDown() {
@@ -38,7 +41,7 @@ class GatewayUserContextInterceptorTest {
     @Test
     void validGatewayHeadersPopulateAndClearCurrentUser() throws Exception {
         MockHttpServletRequest request = new MockHttpServletRequest();
-        request.addHeader(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token");
+        request.addHeader(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, TEST_TOKEN);
         request.addHeader(GatewayUserContextInterceptor.HEADER_USER_ID, "42");
         request.addHeader(GatewayUserContextInterceptor.HEADER_USERNAME, "alice");
         request.addHeader(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "token-1");

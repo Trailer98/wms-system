@@ -203,7 +203,7 @@ class AuthAndPermissionTest {
 
     private void addGatewayHeaders(MultiValueMap<String, String> headers, String token, Long userId, String username) {
         headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        headers.add(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token");
+        headers.add(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token-not-a-real-secret");
         headers.add(GatewayUserContextInterceptor.HEADER_USER_ID, String.valueOf(userId));
         headers.add(GatewayUserContextInterceptor.HEADER_USERNAME, username);
         headers.add(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "test-token-id");

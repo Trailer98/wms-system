@@ -1,12 +1,12 @@
 package com.example.wms.admin.security;
 
+import com.example.wms.admin.config.GatewayInternalTokenProperties;
 import com.example.wms.common.common.ApiResponse;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.Set;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -21,13 +21,13 @@ public class GatewayUserContextInterceptor implements HandlerInterceptor {
     public static final String HEADER_GATEWAY_TOKEN = "X-Gateway-Token";
 
     private final ObjectMapper objectMapper;
-    private final String gatewayInternalToken;
+    private final GatewayInternalTokenProperties gatewayInternalTokenProperties;
 
     public GatewayUserContextInterceptor(
             ObjectMapper objectMapper,
-            @Value("${gateway.internal-token:}") String gatewayInternalToken) {
+            GatewayInternalTokenProperties gatewayInternalTokenProperties) {
         this.objectMapper = objectMapper;
-        this.gatewayInternalToken = gatewayInternalToken;
+        this.gatewayInternalTokenProperties = gatewayInternalTokenProperties;
     }
 
     @Override
@@ -69,8 +69,7 @@ public class GatewayUserContextInterceptor implements HandlerInterceptor {
     }
 
     private boolean isTrustedGatewayRequest(HttpServletRequest request) {
-        return StringUtils.hasText(gatewayInternalToken)
-                && gatewayInternalToken.equals(request.getHeader(HEADER_GATEWAY_TOKEN));
+        return gatewayInternalTokenProperties.internalToken().equals(request.getHeader(HEADER_GATEWAY_TOKEN));
     }
 
     private void writeUnauthorized(HttpServletResponse response, String message) throws IOException {

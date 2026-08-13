@@ -180,7 +180,7 @@ class AiRagAskControllerTest {
     private ResponseEntity<ApiResponse> postWithGatewayHeaders(String token, Long userId, String username, Object body) {
         HttpHeaders headers = new HttpHeaders();
         headers.add(HttpHeaders.AUTHORIZATION, "Bearer " + token);
-        headers.add(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token");
+        headers.add(GatewayUserContextInterceptor.HEADER_GATEWAY_TOKEN, "test-gateway-token-not-a-real-secret");
         headers.add(GatewayUserContextInterceptor.HEADER_USER_ID, String.valueOf(userId));
         headers.add(GatewayUserContextInterceptor.HEADER_USERNAME, username);
         headers.add(GatewayUserContextInterceptor.HEADER_TOKEN_ID, "test-token-id");
