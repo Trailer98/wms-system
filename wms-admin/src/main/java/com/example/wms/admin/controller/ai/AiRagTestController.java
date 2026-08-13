@@ -4,6 +4,7 @@ import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.document.Document;
 import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,10 +20,17 @@ import java.util.stream.Collectors;
  * Manual RAG smoke-test endpoints. Gated on the {@code ai} profile: it depends on the {@link VectorStore}
  * / {@link ChatClient} beans that only exist under {@code ai} (see {@code AiVectorStoreConfig}), so
  * without this the application context fails to load under other profiles (e.g. {@code test}).
+ *
+ * <p>Also gated on {@code wms.ai.test-endpoints-enabled} (default {@code false}, see
+ * {@code application.yml}) — these are unauthenticated manual smoke-test endpoints (no
+ * {@code @RequiresPermission}), so the {@code ai} profile alone must not be enough to expose them; an
+ * operator has to opt in explicitly per environment, independently of whichever profiles happen to be
+ * active there.
  */
 @RestController
 @RequestMapping("/ai/test")
 @Profile("ai")
+@ConditionalOnProperty(name = "wms.ai.test-endpoints-enabled", havingValue = "true")
 public class AiRagTestController {
 
     private final VectorStore vectorStore;

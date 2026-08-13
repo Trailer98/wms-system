@@ -97,3 +97,8 @@ wms:
     # legacy JwtTokenService can be re-enabled during rollback without code changes.
     secret: ${WMS_JWT_SECRET:wms-system-default-jwt-secret-please-change}
     expire-minutes: ${WMS_JWT_EXPIRE_MINUTES:720}
+  ai:
+    # Gates AiRagTestController (unauthenticated manual RAG smoke-test endpoints under /ai/test).
+    # Default OFF everywhere, including under the `ai` profile — that profile alone must not expose
+    # them; an operator opts in explicitly per environment by overriding this to true.
+    test-endpoints-enabled: false
