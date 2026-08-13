@@ -27,8 +27,25 @@ spring:
       chat: none
       embedding: none
 
+  # KNOWN, ACCEPTED GAP — not fixed here, documented instead of silently worked around:
+  # application.yml (base, always layered under every profile) unconditionally declares
+  # spring.config.import: nacos:wms-service.yaml/wms-service-dev.yaml. Confirmed by decompiling
+  # NacosConfigDataLocationResolver.isResolvable() (spring-alibaba-nacos-config 2023.0.3.4) that this
+  # library has no enabled/disabled switch a lower-precedence profile file (this one) can set to gate
+  # whether that import actually runs — every "-Dspring.cloud.nacos.config.enabled=false" /
+  # "spring.config.import=" override attempted here was empirically verified to have no effect; the
+  # import always resolves. Tests therefore genuinely fetch real, live config from Nacos when it's
+  # reachable (as it is in this environment) rather than getting a local/offline default. The only way
+  # to actually close this gap is to change how application.yml itself declares the import (e.g. make
+  # it optional: / profile-conditional) — out of scope here because that is production config
+  # behavior, which this pass is explicitly not allowed to touch. See AiRagAskStreamControllerTest's
+  # model-field assertion for the one place this was directly observed and mitigated at the test-code
+  # level instead (assert a model value is present, not a specific hardcoded one).
+
 gateway:
-  internal-token: test-gateway-token
+  # Must be >= 32 chars: GatewayInternalTokenProperties enforces this even under the test profile
+  # (Bean Validation runs at binding time regardless of active profile). Not a real secret.
+  internal-token: test-gateway-token-not-a-real-secret
 
 auth-service:
   base-url: http://127.0.0.1:8081/auth

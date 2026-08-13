@@ -201,6 +201,8 @@ class AiRagAskAudienceModeTest {
     }
 
     private String url(String path) {
-        return "http://localhost:" + port + "/api" + path;
+        // Context-path is /wms, not /api (corrected repo-wide 2026-08-10 per CLAUDE.md; this test's
+        // helper was never updated, so every request 404'd against a path that's never existed).
+        return "http://localhost:" + port + "/wms" + path;
     }
 }
